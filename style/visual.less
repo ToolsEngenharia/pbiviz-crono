@@ -1,0 +1,406 @@
+@font:           "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+@border:         #e1e4e8;
+@header-bg:      #f3f4f6;
+@header-text:    #6b7280;
+@row-even:       #f9fafb;
+@text-primary:   #111827;
+@text-secondary: #6b7280;
+@text-muted:     #9ca3af;
+@summary-bg:     #eef2ff;
+@summary-text:   #1e3a8a;
+@selected-bg:    #dbeafe;
+@hover-bg:       #eff6ff;
+
+// ── Root: full viewport, flex row ─────────────────────────────────────────────
+.gantt-root {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: row;
+  font-family: @font;
+  font-size: 13px;
+  color: @text-primary;
+  background: #fff;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+// ── Left panel: sidebar (fixed width, flex column) ────────────────────────────
+.gantt-sidebar {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  border-right: 2px solid @border;
+  background: #fff;
+  box-shadow: 2px 0 8px rgba(0,0,0,0.06);
+  z-index: 10;
+  overflow: hidden;
+  box-sizing: border-box;
+
+  // top header cell (aligned with chart header)
+  .sidebar-header {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    background: @header-bg;
+    border-bottom: 1.5px solid @border;
+    box-sizing: border-box;
+    overflow: hidden;
+
+    .col-wbs {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      border-right: 1px solid @border;
+      font-size: 10.5px;
+      font-weight: 700;
+      color: @header-text;
+      letter-spacing: .4px;
+      text-transform: uppercase;
+    }
+    .col-name {
+      flex: 1;
+      padding: 0 12px;
+      font-size: 10.5px;
+      font-weight: 700;
+      color: @header-text;
+      letter-spacing: .4px;
+      text-transform: uppercase;
+    }
+  }
+
+  // scrollable rows body — NO scrollbar visible (driven by chart-body scroll)
+  .sidebar-body {
+    flex: 1;
+    overflow-y: scroll;     // always show, but hide via negative margin trick
+    overflow-x: hidden;
+    scrollbar-width: none;  // Firefox
+    &::-webkit-scrollbar { display: none; }  // Chrome/Edge
+  }
+
+  .sidebar-row {
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid @border;
+    cursor: pointer;
+    transition: background 0.1s;
+    box-sizing: border-box;
+    overflow: hidden;
+
+    &:nth-child(even) { background: @row-even; }
+    &:nth-child(odd)  { background: #fff; }
+    &:hover           { background: @hover-bg; }
+    &.is-summary      { background: @summary-bg; }
+    &.is-selected     { background: @selected-bg !important; }
+    &.is-dimmed       { opacity: 0.28; }
+    &.is-hidden       { display: none; }
+
+    .col-wbs {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      border-right: 1px solid @border;
+      font-size: 10.5px;
+      color: @text-secondary;
+      font-weight: 500;
+      font-variant-numeric: tabular-nums;
+      box-sizing: border-box;
+    }
+
+    .col-name {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      overflow: hidden;
+      padding-right: 8px;
+
+      .collapse-btn {
+        flex-shrink: 0;
+        width: 16px;
+        height: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 3px;
+        color: @summary-text;
+        font-size: 9px;
+        transition: transform 0.15s;
+        user-select: none;
+        &:hover { background: rgba(0,0,0,0.07); }
+        &.collapsed { transform: rotate(-90deg); }
+      }
+
+      .task-indent { flex-shrink: 0; }
+
+      .task-bullet {
+        flex-shrink: 0;
+        width: 5px; height: 5px;
+        border-radius: 50%;
+        background: @text-muted;
+      }
+
+      .task-diamond {
+        flex-shrink: 0;
+        width: 8px; height: 8px;
+        background: #2C3E6B;
+        transform: rotate(45deg);
+        border-radius: 1px;
+      }
+
+      .task-name-text {
+        font-size: 12.5px;
+        color: @text-primary;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        &.summary { font-weight: 700; color: @summary-text; }
+      }
+    }
+  }
+}
+
+// ── Right panel: chart area (flex column) ─────────────────────────────────────
+.gantt-chart-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+
+  // Fixed header — scrolls horizontally with body but NOT vertically
+  .gantt-chart-header {
+    flex-shrink: 0;
+    overflow: hidden;         // clipped; JS syncs scrollLeft from body
+    background: @header-bg;
+    border-bottom: 1.5px solid @border;
+    box-sizing: border-box;
+  }
+
+  // Scrollable body — source of truth for all scroll
+  .gantt-chart-body {
+    flex: 1;
+    overflow-x: auto;
+    overflow-y: auto;
+    box-sizing: border-box;
+
+    &::-webkit-scrollbar        { height: 8px; width: 8px; }
+    &::-webkit-scrollbar-track  { background: #f3f4f6; }
+    &::-webkit-scrollbar-thumb  { background: #c9cdd4; border-radius: 4px; }
+    &::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+    &::-webkit-scrollbar-corner { background: #f3f4f6; }
+  }
+}
+
+// ── Tooltip ───────────────────────────────────────────────────────────────────
+.gantt-tooltip {
+  position: absolute;
+  background: #1f2937;
+  color: #f9fafb;
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 12px;
+  font-family: @font;
+  line-height: 1.65;
+  pointer-events: none;
+  z-index: 9999;
+  max-width: 290px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+  display: none;
+  border: 1px solid #374151;
+
+  .tt-title  { font-size: 13.5px; font-weight: 700; color: #fff; margin-bottom: 2px; }
+  .tt-wbs    { font-size: 10.5px; color: #6b7280; margin-bottom: 8px; }
+  .tt-divider { border: none; border-top: 1px solid #374151; margin: 8px 0; }
+  .tt-row    { display: flex; justify-content: space-between; gap: 16px; font-size: 11.5px; color: #d1d5db;
+               b { color: #f9fafb; font-weight: 600; } }
+  .tt-milestone-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    color: #93c5fd;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .tt-delta  { margin-top: 6px; font-size: 12px; font-weight: 600;
+               &.late  { color: #f87171; } &.ontime { color: #34d399; } &.early { color: #34d399; } }
+  .tt-prog-label { margin-top: 10px; font-size: 11px; color: #9ca3af; margin-bottom: 4px; }
+  .tt-bar-bg { height: 5px; background: #374151; border-radius: 3px; overflow: hidden;
+               .tt-bar-fill { height: 100%; background: #34d399; border-radius: 3px; } }
+}
+
+// ── Zoom controls ─────────────────────────────────────────────────────────────
+.zoom-bar {
+  position: absolute;
+  bottom: 10px;
+  right: 14px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255,255,255,0.92);
+  border: 1px solid #d1d5db;
+  border-radius: 20px;
+  padding: 3px 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+  z-index: 50;
+  user-select: none;
+}
+
+.zoom-btn {
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  color: #374151;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s;
+
+  &:hover { background: #e5e7eb; }
+  &:active { background: #d1d5db; }
+}
+
+.zoom-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #6b7280;
+  min-width: 72px;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.zoom-divider {
+  width: 1px;
+  height: 16px;
+  background: #d1d5db;
+  margin: 0 2px;
+}
+
+.zoom-btn-today {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #f66a0a;
+  width: auto !important;
+  padding: 0 8px;
+  letter-spacing: 0.3px;
+  border-radius: 10px !important;
+
+  &:hover { background: #fff3e8 !important; }
+}
+
+// ── Chart split layout (used by visual.ts) ───────────────────────────────────
+.chart-header-wrap {
+  flex-shrink: 0;
+  overflow: hidden;
+  border-bottom: 1.5px solid @border;
+  background: @header-bg;
+  box-sizing: border-box;
+}
+
+.chart-body-wrap {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: auto;
+  box-sizing: border-box;
+
+  &::-webkit-scrollbar        { height: 8px; width: 8px; }
+  &::-webkit-scrollbar-track  { background: #f3f4f6; }
+  &::-webkit-scrollbar-thumb  { background: #c9cdd4; border-radius: 4px; }
+  &::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+  &::-webkit-scrollbar-corner { background: #f3f4f6; }
+}
+
+// ── Sidebar resize handle ─────────────────────────────────────────────────────
+.sidebar-resize-handle {
+  position: absolute;
+  z-index: 20;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.15s;
+
+  &::after {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 20%;
+    height: 60%;
+    width: 2px;
+    border-radius: 2px;
+    background: @border;
+    transition: background 0.15s;
+  }
+
+  &:hover::after,
+  &:active::after {
+    background: #4472C4;
+  }
+}
+
+// ── WBS toggle button ─────────────────────────────────────────────────────────
+.wbs-toggle-btn {
+  position: absolute;
+  height: 22px;
+  padding: 0 7px;
+  border: 1px solid @border;
+  border-radius: 4px;
+  background: #fff;
+  color: @text-secondary;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: @font;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  z-index: 25;
+
+  &:hover {
+    background: #f0f4ff;
+    border-color: #4472C4;
+    color: #4472C4;
+  }
+}
+
+// ── Milestone tooltip badge ───────────────────────────────────────────────────
+.gantt-tooltip .tt-milestone-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #2C3E6B;
+  color: #fff;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  border-radius: 4px;
+  padding: 2px 7px;
+  margin-bottom: 6px;
+}
+
+// ── Today pill (HTML element, always pixel-aligned with body SVG) ─────────────
+.today-pill {
+  position: absolute;
+  height: 18px;
+  width: 36px;
+  border-radius: 9px;
+  background: #f66a0a;
+  color: #fff;
+  font-size: 9.5px;
+  font-weight: 700;
+  font-family: "Segoe UI", sans-serif;
+  text-align: center;
+  line-height: 18px;
+  pointer-events: none;
+  z-index: 30;
+  white-space: nowrap;
+  display: none;
+}

@@ -1,0 +1,41 @@
+{
+  "dataRoles": [
+    { "name": "taskName",     "kind": "GroupingOrMeasure", "displayName": "Nome da Tarefa" },
+    { "name": "wbs",          "kind": "GroupingOrMeasure", "displayName": "WBS" },
+    { "name": "outlineLevel", "kind": "Measure",           "displayName": "Outline Level" },
+    { "name": "plannedStart", "kind": "Measure",           "displayName": "Início Planejado" },
+    { "name": "plannedEnd",   "kind": "Measure",           "displayName": "Fim Planejado" },
+    { "name": "baselineStart","kind": "Measure",           "displayName": "Início Baseline" },
+    { "name": "baselineEnd",  "kind": "Measure",           "displayName": "Fim Baseline" },
+    { "name": "progress",     "kind": "Measure",           "displayName": "% Conclusão" },
+    { "name": "dependencies", "kind": "Measure",           "displayName": "Dependências" },
+    { "name": "isMilestone",  "kind": "GroupingOrMeasure", "displayName": "Marco (True/False)" }
+  ],
+  "dataViewMappings": [
+    {
+      "table": {
+        "rows": {
+          "select": [
+            { "for": { "in": "taskName" } },
+            { "for": { "in": "wbs" } },
+            { "for": { "in": "outlineLevel" } },
+            { "for": { "in": "plannedStart" } },
+            { "for": { "in": "plannedEnd" } },
+            { "for": { "in": "baselineStart" } },
+            { "for": { "in": "baselineEnd" } },
+            { "for": { "in": "progress" } },
+            { "for": { "in": "dependencies" } },
+            { "for": { "in": "isMilestone" } }
+          ],
+          "dataReductionAlgorithm": { "window": { "count": 2000 } }
+        }
+      }
+    }
+  ],
+  "objects": {},
+  "privileges": [],
+  "supportsHighlight": true,
+  "supportsMultiVisualSelection": true,
+  "supportsSynchronizingFilterState": true,
+  "sorting": { "default": {} }
+}

@@ -1,0 +1,26 @@
+{
+    "visual": {
+        "name": "toolsCrono",
+        "displayName": "toolsCrono",
+        "guid": "toolsCrono8C8CD91C8CAB4EE5816691E06CDC8931",
+        "visualClassName": "Visual",
+        "version": "1.0.0.0",
+        "description": "lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+        "supportUrl": "www.example.com/support",
+        "gitHubUrl": ""
+    },
+    "apiVersion": "5.3.0",
+    "author": {
+        "name": "Leonardo Silva",
+        "email": "ldss@outlook.com"
+    },
+    "assets": {
+        "icon": "assets/icon.png"
+    },
+    "externalJS": null,
+    "style": "style/visual.less",
+    "capabilities": "capabilities.json",
+    "dependencies": null,
+    "stringResources": [],
+    "version": "1.0.0.0"
+}
