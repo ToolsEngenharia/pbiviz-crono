@@ -48,7 +48,8 @@ export function parseDataView(dataView: DataView, host: IVisualHost): GanttViewM
 
     const baselineStart  = idx.baselineStart >= 0 ? parseDate(row[idx.baselineStart]) : null;
     const baselineEnd    = idx.baselineEnd >= 0   ? parseDate(row[idx.baselineEnd])   : null;
-    const progress       = idx.progress >= 0 ? clamp(Number(row[idx.progress] ?? 0), 0, 100) : 0;
+    const rawProgress    = idx.progress >= 0 ? Number(row[idx.progress] ?? 0) : 0;
+    const progress       = clamp(rawProgress > 0 && rawProgress <= 1 ? rawProgress * 100 : rawProgress, 0, 100);
     const depsRaw        = idx.dependencies >= 0 ? String(row[idx.dependencies] ?? "") : "";
     const dependencies   = depsRaw ? depsRaw.split(",").map(d => d.trim()).filter(Boolean) : [];
 

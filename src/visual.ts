@@ -33,30 +33,16 @@ const ZOOM_LEVELS: ZoomLevel[] = [
     bottomFmt: (d) => `S${d.getMonth() < 6 ? 1 : 2}`,
   },
   {
-    minPx: 1.2, label: "ANO / TRIMESTRE",
-    topInterval: d3.timeYear,
-    topFmt: d => `FY${String(d.getFullYear()).slice(-2)}`,
-    bottomInterval: d3.timeMonth.every(3)! as d3.CountableTimeInterval,
-    bottomFmt: (d) => `Q${Math.floor(d.getMonth() / 3) + 1}`,
-  },
-  {
-    minPx: 3.5, label: "ANO / MÊS",
+    minPx: 2, label: "ANO / MÊS",
     topInterval: d3.timeYear,
     topFmt: d => `FY${String(d.getFullYear()).slice(-2)}`,
     bottomInterval: d3.timeMonth,
     bottomFmt: (d) => d3.timeFormat("%b")(d),
   },
   {
-    minPx: 12, label: "MÊS / SEMANA",
+    minPx: 12, label: "MÊS / DIA",
     topInterval: d3.timeMonth,
     topFmt: d => d3.timeFormat("%b %Y")(d),
-    bottomInterval: d3.timeMonday,
-    bottomFmt: (d) => `Sem ${d3.timeFormat("%d/%m")(d)}`,
-  },
-  {
-    minPx: 30, label: "SEMANA / DIA",
-    topInterval: d3.timeMonday,
-    topFmt: d => `Sem ${d3.timeFormat("%d/%m")(d)}`,
     bottomInterval: d3.timeDay,
     bottomFmt: (d) => d3.timeFormat("%d")(d),
   },
@@ -113,16 +99,37 @@ export class Visual implements IVisual {
   private bodySvg:        d3.Selection<SVGSVGElement, unknown, null, undefined>;
   private tooltip:        HTMLElement;
   private todayPill:      HTMLElement;
-  private zoomLabel:      HTMLElement;
+  private zoomBtns:       HTMLButtonElement[] = [];
 
   private viewModel: GanttViewModel | null = null;
   private collapsed  = new Set<string>();
+  private statusFilter: string | null = null;  // null = show all
+  private filterBtns: HTMLButtonElement[] = [];
 
-  private pxPerDay   = 3.5;
+  private pxPerDay   = 0.5;
   private firstLoad   = true;   // auto-fit only once
-  private readonly PX_MIN      = 0.2;
-  private readonly PX_MAX      = 60;
-  private readonly ZOOM_FACTOR = 1.7;
+  // Fixed zoom steps — index 0 = fit-to-width (computed), 1 = ANO/MÊS, 2 = MÊS/DIA
+  private readonly ZOOM_STEPS_FIXED = [5, 30];
+  private zoomIdx    = 0;      // 0 = fit, 1+ = ZOOM_STEPS_FIXED[zoomIdx-1]
+
+  /** Compute pxPerDay for fit-to-width mode (zoomIdx 0) */
+  private computeFitPxPerDay(): number {
+    if (!this.viewModel) return 0.5;
+    const { minDate, maxDate } = this.viewModel;
+    const daySpan  = Math.max(Math.ceil((maxDate.getTime() - minDate.getTime()) / 86400000), 1);
+    const s        = this.fmtSettings;
+    const wbsW     = this.showWbs ? s.layout.wbsColumnWidth.value : 0;
+    // Subtract scrollbar width (~12px) to avoid horizontal scroll when vertical scroll is present
+    const scrollbarW = 12;
+    const availW   = Math.max(this.vpWidth - wbsW - this.sidebarLabelW - scrollbarW, 60);
+    return Math.max(0.1, availW / daySpan);
+  }
+
+  /** Resolve pxPerDay for the current zoomIdx */
+  private resolvePxPerDay(): number {
+    if (this.zoomIdx === 0) return this.computeFitPxPerDay();
+    return this.ZOOM_STEPS_FIXED[this.zoomIdx - 1];
+  }
 
   private vpWidth  = 800;
   private vpHeight = 400;
@@ -200,7 +207,6 @@ export class Visual implements IVisual {
     this.chartBodyWrap.addEventListener("scroll", () => {
       this.chartHeaderWrap.scrollLeft = this.chartBodyWrap.scrollLeft;
       this.sideBody.scrollTop         = this.chartBodyWrap.scrollTop;
-      this.updateTodayPillPosition();
     });
     this.sideBody.addEventListener("scroll", () => {
       this.chartBodyWrap.scrollTop = this.sideBody.scrollTop;
@@ -210,7 +216,7 @@ export class Visual implements IVisual {
     this.chartBodyWrap.addEventListener("wheel", (ev: WheelEvent) => {
       if (!ev.ctrlKey) return;
       ev.preventDefault();
-      this.adjustZoom(ev.deltaY < 0 ? this.ZOOM_FACTOR : 1 / this.ZOOM_FACTOR);
+      this.adjustZoom(ev.deltaY < 0 ? 1 : -1);
     }, { passive: false });
 
     // Click background = clear selection
@@ -219,28 +225,77 @@ export class Visual implements IVisual {
       this.syncHighlight();
     });
 
+    // ── Status filter bar (bottom-left) ─────────────────────────────────────
+    const filterBar = document.createElement("div");
+    filterBar.className = "filter-bar";
+    this.root.appendChild(filterBar);
+
+    const filterLabel = document.createElement("span");
+    filterLabel.className = "filter-label";
+    filterLabel.textContent = "Status:";
+    filterBar.appendChild(filterLabel);
+
+    const FILTER_OPTIONS: { key: string | null; label: string; cls: string }[] = [
+      { key: null,            label: "Todos",         cls: "all" },
+      { key: "em_andamento",  label: "Em andamento",  cls: "inprogress" },
+      { key: "atrasado",      label: "Atrasado",      cls: "late" },
+      { key: "adiantado",     label: "Adiantado",     cls: "early" },
+      { key: "concluida",     label: "Concluída",     cls: "ontime" },
+      { key: "no_prazo",      label: "No prazo",      cls: "neutral" },
+    ];
+
+    FILTER_OPTIONS.forEach(opt => {
+      const btn = document.createElement("button");
+      btn.className = "filter-btn " + opt.cls + (opt.key === this.statusFilter ? " active" : "");
+      btn.textContent = opt.label;
+      btn.addEventListener("click", () => {
+        if (this.statusFilter === opt.key) return;
+        this.statusFilter = opt.key;
+        this.filterBtns.forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        if (this.viewModel) {
+          this.computeVisibility();
+          this.render(this.vpWidth, this.vpHeight);
+        }
+      });
+      filterBar.appendChild(btn);
+      this.filterBtns.push(btn);
+    });
+
     // ── Zoom bar ─────────────────────────────────────────────────────────────
     const zoomBar = document.createElement("div");
     zoomBar.className = "zoom-bar";
     this.root.appendChild(zoomBar);
 
-    const btnOut = document.createElement("button");
-    btnOut.className = "zoom-btn";
-    btnOut.innerHTML = "&#8722;";
-    btnOut.title = "Diminuir zoom (Ctrl+scroll)";
-    btnOut.addEventListener("click", () => this.adjustZoom(1 / this.ZOOM_FACTOR));
-    zoomBar.appendChild(btnOut);
+    // Toggle segmentado de zoom
+    const zoomToggle = document.createElement("div");
+    zoomToggle.className = "zoom-toggle";
+    zoomBar.appendChild(zoomToggle);
 
-    this.zoomLabel = document.createElement("span");
-    this.zoomLabel.className = "zoom-label";
-    zoomBar.appendChild(this.zoomLabel);
-
-    const btnIn = document.createElement("button");
-    btnIn.className = "zoom-btn";
-    btnIn.innerHTML = "&#43;";
-    btnIn.title = "Aumentar zoom (Ctrl+scroll)";
-    btnIn.addEventListener("click", () => this.adjustZoom(this.ZOOM_FACTOR));
-    zoomBar.appendChild(btnIn);
+    const ZOOM_TOGGLE_LABELS = ["Ano", "Mês", "Dia"];
+    ZOOM_TOGGLE_LABELS.forEach((label, idx) => {
+      const btn = document.createElement("button");
+      btn.className = "zoom-toggle-btn" + (idx === this.zoomIdx ? " active" : "");
+      btn.textContent = label;
+      btn.title = ["Ajustar ao viewport (Ctrl+scroll)", "Zoom: ano / mês", "Zoom: mês / dia"][idx];
+      btn.addEventListener("click", () => {
+        if (this.zoomIdx === idx) return;
+        this.zoomIdx  = idx;
+        this.pxPerDay = this.resolvePxPerDay();
+        this.updateZoomToggle();
+        if (this.viewModel) {
+          const scrollMax = this.chartBodyWrap.scrollWidth - this.chartBodyWrap.clientWidth;
+          const ratio     = scrollMax > 0 ? this.chartBodyWrap.scrollLeft / scrollMax : 0;
+          this.computeVisibility();
+          this.render(this.vpWidth, this.vpHeight);
+          const newScrollMax = this.chartBodyWrap.scrollWidth - this.chartBodyWrap.clientWidth;
+          this.chartBodyWrap.scrollLeft   = Math.round(ratio * newScrollMax);
+          this.chartHeaderWrap.scrollLeft = this.chartBodyWrap.scrollLeft;
+        }
+      });
+      zoomToggle.appendChild(btn);
+      this.zoomBtns.push(btn);
+    });
 
     // Divider
     const divider = document.createElement("div");
@@ -248,7 +303,7 @@ export class Visual implements IVisual {
     zoomBar.appendChild(divider);
 
     const btnToday = document.createElement("button");
-    btnToday.className = "zoom-btn zoom-btn-today";
+    btnToday.className = "zoom-today-btn";
     btnToday.innerHTML = "Hoje";
     btnToday.title = "Ir para hoje";
     btnToday.addEventListener("click", () => this.scrollToToday());
@@ -347,11 +402,31 @@ export class Visual implements IVisual {
     this.chartBodyWrap.scrollTo({ left: targetX, behavior: "smooth" });
   }
 
-    private adjustZoom(factor: number): void {
-    this.pxPerDay = Math.min(this.PX_MAX, Math.max(this.PX_MIN, this.pxPerDay * factor));
+  private updateZoomToggle(): void {
+    this.zoomBtns.forEach((btn, i) => btn.classList.toggle("active", i === this.zoomIdx));
+  }
+
+    private adjustZoom(direction: number): void {
+    const maxIdx = this.ZOOM_STEPS_FIXED.length; // 0=fit, 1..N=fixed
+    const newIdx = Math.min(maxIdx, Math.max(0,
+      this.zoomIdx + (direction > 0 ? 1 : -1)));
+    if (newIdx === this.zoomIdx) return;
+    this.zoomIdx  = newIdx;
+    this.pxPerDay = this.resolvePxPerDay();
+    this.updateZoomToggle();
+
     if (this.viewModel) {
+      // Preserve scroll position proportionally so chart doesn't jump
+      const scrollMax = this.chartBodyWrap.scrollWidth - this.chartBodyWrap.clientWidth;
+      const ratio     = scrollMax > 0 ? this.chartBodyWrap.scrollLeft / scrollMax : 0;
+
       this.computeVisibility();
       this.render(this.vpWidth, this.vpHeight);
+
+      // Restore proportional scroll position after render changed content width
+      const newScrollMax = this.chartBodyWrap.scrollWidth - this.chartBodyWrap.clientWidth;
+      this.chartBodyWrap.scrollLeft  = Math.round(ratio * newScrollMax);
+      this.chartHeaderWrap.scrollLeft = this.chartBodyWrap.scrollLeft;
     }
   }
 
@@ -370,16 +445,14 @@ export class Visual implements IVisual {
       this.vpWidth  = options.viewport.width;
       this.vpHeight = options.viewport.height;
 
-      // Auto-fit only on first load — preserve zoom on subsequent updates
+      // Auto-fit only on first load — start at fit-to-width (zoomIdx 0)
       if (this.firstLoad) {
         this.firstLoad = false;
-        const { minDate, maxDate } = this.viewModel;
-        const daySpan  = Math.max(Math.ceil((maxDate.getTime() - minDate.getTime()) / 86400000), 1);
-        const s        = this.fmtSettings;
-        const wbsWInit = this.showWbs ? s.layout.wbsColumnWidth.value : 0;
-        const availW   = Math.max(this.vpWidth - wbsWInit - this.sidebarLabelW, 100);
-        this.pxPerDay  = Math.min(this.PX_MAX, Math.max(this.PX_MIN, availW / daySpan));
+        this.zoomIdx   = 0;
       }
+
+      // Recalculate pxPerDay when in fit-to-width mode (responds to viewport resize)
+      this.pxPerDay = this.resolvePxPerDay();
 
       this.computeVisibility();
       this.render(this.vpWidth, this.vpHeight);
@@ -393,17 +466,54 @@ export class Visual implements IVisual {
     return this.fmtService.buildFormattingModel(this.fmtSettings);
   }
 
-  // ── Collapse ──────────────────────────────────────────────────────────────
+  // ── Task status ────────────────────────────────────────────────────────────
+  private getTaskStatus(task: GanttTask): string {
+    const _n = new Date();
+    const today = new Date(_n.getFullYear(), _n.getMonth(), _n.getDate());
+    if (task.isMilestone) {
+      if (today > task.plannedEnd) return "atrasado";
+      return "no_prazo";
+    }
+    if (task.progress >= 100 && today <= task.plannedEnd) return "adiantado";
+    if (task.progress >= 100) return "concluida";
+    if (today > task.plannedEnd) return "atrasado";
+    if (task.progress > 0) return "em_andamento";
+    return "no_prazo";
+  }
+
+  // ── Collapse + status filter ──────────────────────────────────────────────
   private computeVisibility(): void {
     if (!this.viewModel) return;
     const tasks = this.viewModel.tasks;
     tasks.forEach(t => { t.isVisible = true; });
+
+    // 1) Collapse
     for (let i = 0; i < tasks.length; i++) {
       if (!this.collapsed.has(tasks[i].id)) continue;
       const pl = tasks[i].outlineLevel;
       for (let j = i + 1; j < tasks.length; j++) {
         if (tasks[j].outlineLevel <= pl) break;
         tasks[j].isVisible = false;
+      }
+    }
+
+    // 2) Status filter
+    if (this.statusFilter) {
+      const filter = this.statusFilter;
+      // First pass: mark all non-matching tasks (including summaries)
+      tasks.forEach(t => {
+        if (!t.isVisible) return;
+        if (this.getTaskStatus(t) !== filter) t.isVisible = false;
+      });
+      // Second pass (bottom-up): restore summaries that have at least one visible descendant
+      for (let i = tasks.length - 1; i >= 0; i--) {
+        const t = tasks[i];
+        if (!t.isSummary || t.isVisible) continue;
+        const pl = t.outlineLevel;
+        for (let j = i + 1; j < tasks.length; j++) {
+          if (tasks[j].outlineLevel <= pl) break;
+          if (tasks[j].isVisible) { t.isVisible = true; break; }
+        }
       }
     }
   }
@@ -453,6 +563,12 @@ export class Visual implements IVisual {
   private render(vpWidth: number, vpHeight: number): void {
     if (!this.viewModel) return;
 
+    // Recalculate pxPerDay in fit-to-width mode (zoomIdx 0) so sidebar
+    // resize, WBS toggle, and viewport changes all keep content fitted
+    if (this.zoomIdx === 0) {
+      this.pxPerDay = this.computeFitPxPerDay();
+    }
+
     const { tasks, minDate, maxDate } = this.viewModel;
     const s            = this.fmtSettings;
     const rowH         = s.layout.rowHeight.value;
@@ -474,13 +590,14 @@ export class Visual implements IVisual {
     const wrapW        = Math.max(vpWidth - sidebarW, 60);
     // contentW: exact pixels based on pxPerDay — xScale ALWAYS uses this, never stretched
     const contentW     = Math.round(daySpan * this.pxPerDay);
-    // svgW: at least wrapW so background fills the visible area (bars still at contentW positions)
-    const chartW       = Math.max(contentW, wrapW);
+    // svgW: in fit mode (zoomIdx 0) use contentW to avoid horizontal scroll;
+    // in other modes, at least wrapW so background fills the visible area
+    const chartW       = this.zoomIdx === 0 ? contentW : Math.max(contentW, wrapW);
     const totalH       = visibleTasks.length * rowH;
     const bodyH        = vpHeight - this.HEADER_H;
 
     const zl = pickZoom(this.pxPerDay);
-    this.zoomLabel.textContent = zl.label;
+    this.updateZoomToggle();
 
     // xScale maps to contentW — bars are always proportional to pxPerDay
     const xScale   = d3.scaleTime().domain([minDate, maxDate]).range([0, contentW]);
@@ -608,9 +725,10 @@ export class Visual implements IVisual {
     this.chartHeaderWrap.style.cssText =
       `width:${wrapW}px;height:${this.HEADER_H}px;overflow:hidden;flex-shrink:0;`;
 
-    // Body wrap: remaining height, overflow auto (source of scroll truth)
+    // Body wrap: remaining height, overflow-x hidden in fit mode (no horizontal scroll needed)
+    const overflowX = this.zoomIdx === 0 ? "hidden" : "auto";
     this.chartBodyWrap.style.cssText =
-      `width:${wrapW}px;height:${bodyH}px;overflow:auto;flex:1;`;
+      `width:${wrapW}px;height:${bodyH}px;overflow-x:${overflowX};overflow-y:auto;flex:1;`;
 
     // ── Header SVG ───────────────────────────────────────────────────────────
     this.headerSvg.attr("width", chartW).attr("height", this.HEADER_H);
@@ -635,7 +753,9 @@ export class Visual implements IVisual {
     // Top row: render each cell between consecutive ticks
     topTicks.forEach((d, i) => {
       const x1    = xScale(d);
-      const x2    = i + 1 < topTicks.length ? xScale(topTicks[i + 1]) : chartW;
+      const x2    = i + 1 < topTicks.length
+        ? xScale(topTicks[i + 1])
+        : Math.min(xScale(zl.topInterval.offset(d, 1)), chartW);
       const cellW = x2 - x1;
 
       // Alternating background
@@ -675,12 +795,14 @@ export class Visual implements IVisual {
     });
 
     // Bottom row
-    const isDayView = this.pxPerDay >= 30;
+    const isDayView = this.pxPerDay >= 12;
     const today     = new Date();
 
     botTicks.forEach((d, i) => {
       const x1    = xScale(d);
-      const x2    = i + 1 < botTicks.length ? xScale(botTicks[i + 1]) : chartW;
+      const x2    = i + 1 < botTicks.length
+        ? xScale(botTicks[i + 1])
+        : Math.min(xScale(zl.bottomInterval.offset(d, 1)), chartW);
       const cellW = Math.max(x2 - x1, 0);
       const isWE  = isDayView && (d.getDay() === 0 || d.getDay() === 6);
       // Suppress label when today falls in this cell (arrow/pill already marks it)
@@ -793,17 +915,33 @@ export class Visual implements IVisual {
           .attr("stroke", cToday).attr("stroke-width", 2)
           .attr("stroke-dasharray", "5,4").attr("opacity", 0.9);
 
-        // Header: full-height dashed line (pill is now an HTML element, always aligned)
+        // Header: dashed line full height
         this.headerSvg.append("line")
           .attr("x1", tx).attr("x2", tx)
           .attr("y1", 0).attr("y2", this.HEADER_H + 2)
           .attr("stroke", cToday).attr("stroke-width", 2)
           .attr("stroke-dasharray", "5,4").attr("opacity", 0.9);
+
+        // Header: "Hoje" pill rendered inside headerSvg (avoids HTML stacking issues)
+        const pillW = 36, pillH = 18, pillR = 9;
+        const pillX = tx - pillW / 2, pillY = 3;
+        this.headerSvg.append("rect")
+          .attr("x", pillX).attr("y", pillY)
+          .attr("width", pillW).attr("height", pillH)
+          .attr("rx", pillR).attr("ry", pillR)
+          .attr("fill", cToday);
+        this.headerSvg.append("text")
+          .attr("x", tx).attr("y", pillY + pillH / 2 + 4)
+          .attr("text-anchor", "middle")
+          .attr("fill", "#fff").attr("font-size", "9.5px")
+          .attr("font-weight", "700")
+          .attr("font-family", "Segoe UI, sans-serif")
+          .text("Hoje");
       }
     }
 
-    // Update HTML "Hoje" pill position
-    this.updateTodayPillPosition();
+    // Hide the HTML pill — now rendered in SVG above
+    this.todayPill.style.display = "none";
 
     // ── Dependencies ──────────────────────────────────────────────────────────
     if (showDeps) this.renderDependencies(visibleTasks, xScale, rowH);
@@ -933,6 +1071,9 @@ export class Visual implements IVisual {
         }
       }
     });
+
+    // ── Sync header scroll with body after re-render (fixes misalignment on zoom) ──
+    this.chartHeaderWrap.scrollLeft = this.chartBodyWrap.scrollLeft;
   }
 
   // ── Dependencies ─────────────────────────────────────────────────────────
@@ -981,49 +1122,74 @@ export class Visual implements IVisual {
 
   // ── Tooltip ───────────────────────────────────────────────────────────────
   private showTooltip(ev: MouseEvent, task: GanttTask): void {
-    const fmt   = d3.timeFormat("%d/%m/%Y");
+    const fmt = d3.timeFormat("%d/%m/%y");
+
+    // Builds a date block: Planejado + Baseline with pipe + delta (planned − baseline)
+    const dateBlock = (
+      label: string,
+      planned: Date,
+      baseline: Date | null
+    ): string => {
+      const d = baseline
+        ? Math.round((planned.getTime() - baseline.getTime()) / 86400000)
+        : null;
+      const cls = d === null ? "" : d === 0 ? "ontime" : d > 0 ? "late" : "early";
+      const val = d === null ? "" : d === 0 ? "0" : d > 0 ? `+${d}` : `${d}`;
+
+      return `
+        <div class="tt-section-label">${label}</div>
+        <div class="tt-date-group">
+          <div class="tt-date-lines">
+            <div class="tt-date-row">
+              <span class="tt-date-type">Planejado</span>
+              <span class="tt-date-val">${fmt(planned)}</span>
+            </div>
+            ${baseline ? `
+            <div class="tt-date-row muted">
+              <span class="tt-date-type">Baseline</span>
+              <span class="tt-date-val">${fmt(baseline)}</span>
+            </div>` : ""}
+          </div>
+          ${d !== null ? `
+          <div class="tt-pipe-col">
+            <span class="tt-delta ${cls}">${val}</span>
+          </div>` : ""}
+        </div>`;
+    };
+
+    // Status: compare actual progress vs expected progress based on today
+    const statusLabel = (): string => {
+      const STATUS_MAP: Record<string, { cls: string; label: string }> = {
+        adiantado:    { cls: "early",      label: "Adiantado" },
+        concluida:    { cls: "ontime",     label: "Concluída" },
+        atrasado:     { cls: "late",       label: "Atrasado" },
+        em_andamento: { cls: "inprogress", label: "Em andamento" },
+        no_prazo:     { cls: "ontime",     label: "No prazo" },
+      };
+      const s = this.getTaskStatus(task);
+      const m = STATUS_MAP[s] || STATUS_MAP["no_prazo"];
+      return `<span class="tt-status-badge ${m.cls}">${m.label}</span>`;
+    };
 
     if (task.isMilestone) {
-      // ── Simplified tooltip for milestones ─────────────────────────────────
-      const delta = task.baselineStart
-        ? Math.round((task.plannedStart.getTime() - task.baselineStart.getTime()) / 86400000)
-        : null;
-      const dh = delta === null ? "" :
-        delta === 0 ? `<div class="tt-delta ontime">▸ No prazo</div>` :
-        delta > 0   ? `<div class="tt-delta late">▸ ${delta}d atrasado</div>` :
-                      `<div class="tt-delta early">▸ ${Math.abs(delta)}d adiantado</div>`;
-
       this.tooltip.innerHTML = `
-        <div class="tt-milestone-badge">◆ Marco</div>
+        <div class="tt-badge">◆ Marco</div>
         <div class="tt-title">${task.name}</div>
         ${task.wbs ? `<div class="tt-wbs">WBS: ${task.wbs}</div>` : ""}
         <hr class="tt-divider"/>
-        <div class="tt-row"><b>Data</b><span>${fmt(task.plannedStart)}</span></div>
-        ${task.baselineStart ? `
-          <div class="tt-row"><b>Baseline</b><span>${fmt(task.baselineStart)}</span></div>
-          ${dh}` : ""}`;
-
+        ${dateBlock("Data", task.plannedStart, task.baselineStart)}`;
     } else {
-      // ── Full tooltip for regular tasks ─────────────────────────────────────
-      const delta = task.baselineStart
-        ? Math.round((task.plannedStart.getTime() - task.baselineStart.getTime()) / 86400000)
-        : null;
-      const dh = delta === null ? "" :
-        delta === 0 ? `<div class="tt-delta ontime">▸ No prazo</div>` :
-        delta > 0   ? `<div class="tt-delta late">▸ ${delta}d atrasado</div>` :
-                      `<div class="tt-delta early">▸ ${Math.abs(delta)}d adiantado</div>`;
-
       this.tooltip.innerHTML = `
         <div class="tt-title">${task.name}</div>
         ${task.wbs ? `<div class="tt-wbs">WBS: ${task.wbs}</div>` : ""}
         <hr class="tt-divider"/>
-        <div class="tt-row"><b>Início</b><span>${fmt(task.plannedStart)}</span></div>
-        <div class="tt-row"><b>Fim</b><span>${fmt(task.plannedEnd)}</span></div>
-        ${task.baselineStart ? `
-          <div class="tt-row"><b>Base início</b><span>${fmt(task.baselineStart)}</span></div>
-          <div class="tt-row"><b>Base fim</b><span>${fmt(task.baselineEnd!)}</span></div>
-          ${dh}` : ""}
-        <div class="tt-progress-label">Progresso: <b>${task.progress}%</b></div>
+        ${dateBlock("Início", task.plannedStart, task.baselineStart)}
+        ${dateBlock("Término", task.plannedEnd, task.baselineEnd)}
+        <hr class="tt-divider"/>
+        <div class="tt-progress-row">
+          <span class="tt-progress-label">Progresso: <b>${Math.round(task.progress)}%</b></span>
+          ${statusLabel()}
+        </div>
         <div class="tt-bar-bg"><div class="tt-bar-fill" style="width:${task.progress}%"></div></div>`;
     }
 
@@ -1031,7 +1197,7 @@ export class Visual implements IVisual {
     let tx = ev.clientX - rect.left + 14;
     let ty = ev.clientY - rect.top  + 14;
     if (tx + 300 > rect.width)  tx = ev.clientX - rect.left - 310;
-    if (ty + 220 > rect.height) ty = ev.clientY - rect.top  - 230;
+    if (ty + 260 > rect.height) ty = ev.clientY - rect.top  - 270;
     this.tooltip.style.cssText = `left:${tx}px;top:${ty}px;display:block;`;
   }
 
