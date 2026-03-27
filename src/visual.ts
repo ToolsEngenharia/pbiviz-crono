@@ -118,7 +118,8 @@ export class Visual implements IVisual {
     const { minDate, maxDate } = this.viewModel;
     const daySpan  = Math.max(Math.ceil((maxDate.getTime() - minDate.getTime()) / 86400000), 1);
     const s        = this.fmtSettings;
-    const wbsW     = this.showWbs ? s.layout.wbsColumnWidth.value : 0;
+    const wbsW     = (this.fmtSettings.layout.showWbs.value && this.showWbs)
+      ? s.layout.wbsColumnWidth.value : 0;
     // Subtract scrollbar width (~12px) to avoid horizontal scroll when vertical scroll is present
     const scrollbarW = 12;
     const availW   = Math.max(this.vpWidth - wbsW - this.sidebarLabelW - scrollbarW, 60);
@@ -225,34 +226,62 @@ export class Visual implements IVisual {
       this.syncHighlight();
     });
 
-    // ── Status filter bar (bottom-left) ─────────────────────────────────────
+    // ── Status filter bar (collapsible) ─────────────────────────────────────
     const filterBar = document.createElement("div");
-    filterBar.className = "filter-bar";
+    filterBar.className = "filter-bar collapsed";
     this.root.appendChild(filterBar);
 
-    const filterLabel = document.createElement("span");
-    filterLabel.className = "filter-label";
-    filterLabel.textContent = "Status:";
-    filterBar.appendChild(filterLabel);
-
-    const FILTER_OPTIONS: { key: string | null; label: string; cls: string }[] = [
-      { key: null,            label: "Todos",         cls: "all" },
-      { key: "em_andamento",  label: "Em andamento",  cls: "inprogress" },
-      { key: "atrasado",      label: "Atrasado",      cls: "late" },
-      { key: "adiantado",     label: "Adiantado",     cls: "early" },
-      { key: "concluida",     label: "Concluída",     cls: "ontime" },
-      { key: "no_prazo",      label: "No prazo",      cls: "neutral" },
+    const FILTER_OPTIONS: { key: string | null; label: string; cls: string; dot: string }[] = [
+      { key: null,            label: "Todos",      cls: "all",        dot: "" },
+      { key: "em_andamento",  label: "Andamento",  cls: "inprogress", dot: "#3b82f6" },
+      { key: "atrasado",      label: "Atrasado",   cls: "late",       dot: "#ef4444" },
+      { key: "adiantado",     label: "Adiantado",  cls: "early",      dot: "#10b981" },
+      { key: "concluida",     label: "Concluída",  cls: "done",       dot: "#6b7280" },
+      { key: "no_prazo",      label: "No prazo",   cls: "neutral",    dot: "#9ca3af" },
     ];
+
+    const isFilterExpanded = () => !filterBar.classList.contains("collapsed");
+    const collapseFilter   = () => filterBar.classList.add("collapsed");
+    const expandFilter     = () => filterBar.classList.remove("collapsed");
+
+    // Click outside → collapse
+    document.addEventListener("mousedown", (ev: MouseEvent) => {
+      if (isFilterExpanded() && !filterBar.contains(ev.target as Node)) {
+        collapseFilter();
+      }
+    });
 
     FILTER_OPTIONS.forEach(opt => {
       const btn = document.createElement("button");
       btn.className = "filter-btn " + opt.cls + (opt.key === this.statusFilter ? " active" : "");
-      btn.textContent = opt.label;
-      btn.addEventListener("click", () => {
-        if (this.statusFilter === opt.key) return;
+      if (opt.dot) {
+        const dot = document.createElement("span");
+        dot.className = "filter-dot";
+        dot.style.background = opt.dot;
+        btn.appendChild(dot);
+      }
+      const txt = document.createTextNode(opt.label);
+      btn.appendChild(txt);
+
+      // Chevron only on active button (visual hint that it's expandable)
+      const chevron = document.createElement("span");
+      chevron.className = "filter-chevron";
+      chevron.innerHTML = "&#9660;";
+      btn.appendChild(chevron);
+
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if (btn.classList.contains("active")) {
+          // Toggle expand/collapse
+          if (isFilterExpanded()) collapseFilter();
+          else expandFilter();
+          return;
+        }
+        // Select this filter
         this.statusFilter = opt.key;
         this.filterBtns.forEach(b => b.classList.remove("active"));
         btn.classList.add("active");
+        collapseFilter();
         if (this.viewModel) {
           this.computeVisibility();
           this.render(this.vpWidth, this.vpHeight);
@@ -340,7 +369,8 @@ export class Visual implements IVisual {
     window.addEventListener("mousemove", (ev: MouseEvent) => {
       if (!this.isDragging) return;
       const delta = ev.clientX - this.dragStartX;
-      const wbsW  = this.showWbs ? this.fmtSettings.layout.wbsColumnWidth.value : 0;
+      const wbsW  = (this.fmtSettings.layout.showWbs.value && this.showWbs)
+        ? this.fmtSettings.layout.wbsColumnWidth.value : 0;
       const minW  = 80;
       const maxW  = Math.max(this.vpWidth - wbsW - 200, 120);
       this.sidebarLabelW = Math.min(maxW, Math.max(minW, this.dragStartW + delta));
@@ -522,7 +552,8 @@ export class Visual implements IVisual {
   private updateTodayPillPosition(): void {
     if (!this.viewModel) { this.todayPill.style.display = "none"; return; }
     const s      = this.fmtSettings;
-    const wbsW   = this.showWbs ? s.layout.wbsColumnWidth.value : 0;
+    const wbsW   = (this.fmtSettings.layout.showWbs.value && this.showWbs)
+      ? s.layout.wbsColumnWidth.value : 0;
     const labelW = this.sidebarLabelW;
     const sidebarW = wbsW + labelW;
 
@@ -572,17 +603,27 @@ export class Visual implements IVisual {
     const { tasks, minDate, maxDate } = this.viewModel;
     const s            = this.fmtSettings;
     const rowH         = s.layout.rowHeight.value;
-    const wbsW         = this.showWbs ? s.layout.wbsColumnWidth.value : 0;
+    const showDeps          = s.layout.showDependencies.value;
+    const showToday         = s.layout.showToday.value;
+    const showBaseline      = s.layout.showBaseline.value;
+    const showStatusLabels  = s.layout.showStatusLabels.value;
+    const showStatusBar     = s.layout.showStatusBar.value;
+    const showWbsSetting    = s.layout.showWbs.value;
+    // WBS: panel toggle AND in-chart button must both be on
+    const wbsActive    = showWbsSetting && this.showWbs;
+    const wbsW         = wbsActive ? s.layout.wbsColumnWidth.value : 0;
     const labelW       = this.sidebarLabelW;
-    const showDeps     = s.layout.showDependencies.value;
-    const showToday    = s.layout.showToday.value;
-    const showBaseline = s.layout.showBaseline.value;
     const cPlanned     = s.colors.plannedBarColor.value.value;
+    const cSummary     = s.colors.summaryBarColor.value.value;
     const cBaseline    = s.colors.baselineBarColor.value.value;
     const cProgress    = s.colors.progressColor.value.value;
     const cToday       = s.colors.todayLineColor.value.value;
     const cMilestone   = s.colors.milestoneColor.value.value;
     const cMsBaseline  = s.colors.milestoneBaselineColor.value.value;
+    const cDepLine     = s.colors.dependencyLineColor.value.value;
+
+    // ── DIAGNOSTIC — remove after debugging ──
+    console.log("[GANTT-COLOR] dependencyLineColor:", cDepLine, "| raw:", s.colors.dependencyLineColor);
 
     const visibleTasks = tasks.filter(t => t.isVisible);
     const daySpan      = Math.max(Math.ceil((maxDate.getTime() - minDate.getTime()) / 86400000), 1);
@@ -616,20 +657,29 @@ export class Visual implements IVisual {
         `cursor:col-resize;z-index:20;`;
     }
 
-    // Position WBS toggle button
+    // WBS toggle button — hide if panel toggle is off
     const wbsToggleEl = this.root.querySelector(".wbs-toggle-btn") as HTMLElement;
     if (wbsToggleEl) {
-      wbsToggleEl.style.cssText =
-        `position:absolute;top:${(this.HEADER_H - 22) / 2}px;left:${sidebarW - 62}px;` +
-        `z-index:25;`;
+      if (!showWbsSetting) {
+        wbsToggleEl.style.display = "none";
+      } else {
+        wbsToggleEl.style.display = "";
+        wbsToggleEl.style.cssText =
+          `position:absolute;top:${(this.HEADER_H - 22) / 2}px;left:${sidebarW - 62}px;` +
+          `z-index:25;`;
+      }
     }
+
+    // Status filter bar — hide if disabled from panel
+    const filterBarEl = this.root.querySelector(".filter-bar") as HTMLElement;
+    if (filterBarEl) filterBarEl.style.display = showStatusBar ? "" : "none";
 
     const sideHeaderEl = this.sidebar.querySelector(".sidebar-header") as HTMLElement;
     sideHeaderEl.innerHTML = "";
     sideHeaderEl.style.height = `${this.HEADER_H}px`;
     sideHeaderEl.style.minHeight = `${this.HEADER_H}px`;
 
-    if (this.showWbs) {
+    if (wbsActive) {
       const wbsHead = document.createElement("div");
       wbsHead.className = "col-wbs";
       wbsHead.style.cssText = `width:${wbsW}px;min-width:${wbsW}px;height:${this.HEADER_H}px;`;
@@ -654,7 +704,7 @@ export class Visual implements IVisual {
       row.style.height = `${rowH}px`;
       row.dataset.id   = task.id;
 
-      if (this.showWbs) {
+      if (wbsActive) {
         const wbsCell = document.createElement("div");
         wbsCell.className = "col-wbs";
         wbsCell.style.cssText = `width:${wbsW}px;min-width:${wbsW}px;height:${rowH}px;`;
@@ -701,6 +751,26 @@ export class Visual implements IVisual {
       ns.textContent = task.name;
       ns.title = task.name;
       nameCell.appendChild(ns);
+
+      // Status badge — only for non-summary, non-milestone tasks
+      if (showStatusLabels && !task.isSummary && !task.isMilestone) {
+        const STATUS_DEF: Record<string, { cls: string; label: string }> = {
+          adiantado:    { cls: "early",      label: "Adiantado" },
+          concluida:    { cls: "done",       label: "Concluída" },
+          atrasado:     { cls: "late",       label: "Atrasado" },
+          em_andamento: { cls: "inprogress", label: "Andamento" },
+          no_prazo:     { cls: "ontime",     label: "No prazo" },
+        };
+        const st = this.getTaskStatus(task);
+        const def = STATUS_DEF[st];
+        if (def) {
+          const badge = document.createElement("span");
+          badge.className = `task-status-badge ${def.cls}`;
+          badge.textContent = def.label;
+          nameCell.appendChild(badge);
+        }
+      }
+
       row.appendChild(nameCell);
 
       row.addEventListener("click", ev => {
@@ -850,15 +920,17 @@ export class Visual implements IVisual {
     defs.append("clipPath").attr("id", "bars-clip")
       .append("rect").attr("x", 0).attr("y", 0).attr("width", chartW).attr("height", fullH);
     defs.append("marker").attr("id", "dep-arrow")
-      .attr("viewBox", "0 0 8 8").attr("refX", 8).attr("refY", 4)
-      .attr("markerWidth", 5).attr("markerHeight", 5).attr("orient", "auto")
-      .append("path").attr("d", "M0,0 L8,4 L0,8 z").attr("fill", "#c0c7d0");
+      .attr("viewBox", "0 0 8 8").attr("refX", 7).attr("refY", 4)
+      .attr("markerWidth", 6).attr("markerHeight", 6).attr("orient", "auto")
+      .append("path").attr("d", "M0,1 L7,4 L0,7 z").attr("fill", cDepLine);
 
     // Row backgrounds
     visibleTasks.forEach((task, i) => {
       this.bodySvg.append("rect")
+        .classed("row-bg", true)
+        .attr("data-id", task.id)
         .attr("x", 0).attr("y", i * rowH).attr("width", chartW).attr("height", rowH)
-        .attr("fill", task.isSummary ? "#f0f4ff" : (i % 2 === 0 ? "#fafbfc" : "#fff"));
+        .attr("fill", task.isSummary ? "#e6f7f6" : (i % 2 === 0 ? "#fafbfc" : "#fff"));
     });
 
     // Vertical grid — top (stronger)
@@ -944,7 +1016,7 @@ export class Visual implements IVisual {
     this.todayPill.style.display = "none";
 
     // ── Dependencies ──────────────────────────────────────────────────────────
-    if (showDeps) this.renderDependencies(visibleTasks, xScale, rowH);
+    if (showDeps) this.renderDependencies(visibleTasks, xScale, rowH, cDepLine);
 
     // ── Bars ─────────────────────────────────────────────────────────────────
     const barsG = this.bodySvg.append("g")
@@ -1014,40 +1086,66 @@ export class Visual implements IVisual {
 
       } else {
         // ── REGULAR BAR ──────────────────────────────────────────────────────
-        // Planned bg (translucent)
+        // All three layers share the same x/y/w/h so they align perfectly.
+        // The outline uses stroke-alignment via inset (half stroke-width).
+        const sw = 1.5;  // stroke width
+        const progressW = Math.min(Math.max(barW * (task.progress / 100), this.BAR_R * 2), barW);
+
+        // Planned bg (translucent) — lighter tint fixed so barra tem corpo visível
         tg.append("rect")
           .attr("x", x1).attr("y", barY).attr("width", barW).attr("height", barH)
-          .attr("rx", this.BAR_R).attr("fill", cPlanned).attr("opacity", 0.22);
+          .attr("rx", this.BAR_R).attr("fill", "#96DDDA").attr("opacity", 0.45);
 
-        // Progress fill
+        // Progress fill — capped at barW so it never overflows
         if (task.progress > 0) {
           tg.append("rect")
             .attr("x", x1).attr("y", barY)
-            .attr("width", Math.max(barW * (task.progress / 100), this.BAR_R * 2))
+            .attr("width", progressW)
             .attr("height", barH).attr("rx", this.BAR_R)
-            .attr("fill", task.isSummary ? "#1e3a8a" : cProgress);
+            .attr("fill", task.isSummary ? cSummary : cProgress);
         }
 
-        // Planned outline
+        // Planned outline — same bounds, stroke centered on edge
         tg.append("rect")
-          .attr("x", x1 + .5).attr("y", barY + .5)
-          .attr("width", barW - 1).attr("height", barH - 1)
+          .attr("x", x1).attr("y", barY)
+          .attr("width", barW).attr("height", barH)
           .attr("rx", this.BAR_R).attr("fill", "none")
-          .attr("stroke", task.isSummary ? "#1e3a8a" : cPlanned).attr("stroke-width", 1.5);
+          .attr("stroke", task.isSummary ? cSummary : cPlanned).attr("stroke-width", sw);
 
-        // % label
-        if (!task.isSummary && barW > 36) {
-          const lx = task.progress > 0
-            ? x1 + Math.min(barW * (task.progress / 100) / 2, barW / 2)
-            : x1 + barW / 2;
-          tg.append("text")
-            .attr("x", lx).attr("y", barY + barH / 2 + 4)
-            .attr("text-anchor", "middle").attr("pointer-events", "none")
-            .attr("fill", "#fff").attr("font-size", "9.5px").attr("font-weight", "700")
-            .attr("font-family", "Segoe UI, sans-serif")
-            .attr("paint-order", "stroke")
-            .attr("stroke", "rgba(0,0,0,0.25)").attr("stroke-width", "2px")
-            .text(`${task.progress}%`);
+        // % label — inside bar when wide enough, outside (right) when narrow
+        // Summary tasks always show outside (bar is thinner)
+        {
+          const pctText = `${Math.round(task.progress)}%`;
+          const minInside = 42;  // px threshold to fit label inside
+          const summaryColor = cSummary;
+
+          if (!task.isSummary && barW >= minInside) {
+            // ── Inside bar ──
+            const lx = task.progress > 0
+              ? x1 + Math.min(barW * (task.progress / 100) / 2, barW / 2)
+              : x1 + barW / 2;
+            tg.append("text")
+              .attr("x", lx).attr("y", barCY)
+              .attr("dy", "0.35em")
+              .attr("text-anchor", "middle")
+              .attr("pointer-events", "none")
+              .attr("fill", "#fff").attr("font-size", "9.5px").attr("font-weight", "700")
+              .attr("font-family", "Segoe UI, sans-serif")
+              .attr("paint-order", "stroke")
+              .attr("stroke", "rgba(0,0,0,0.25)").attr("stroke-width", "2px")
+              .text(pctText);
+          } else {
+            // ── Outside bar (right side) ──
+            tg.append("text")
+              .attr("x", x1 + barW + 5).attr("y", barCY)
+              .attr("dy", "0.35em")
+              .attr("text-anchor", "start")
+              .attr("pointer-events", "none")
+              .attr("fill", task.isSummary ? summaryColor : "#6b7280")
+              .attr("font-size", "9.5px").attr("font-weight", "700")
+              .attr("font-family", "Segoe UI, sans-serif")
+              .text(pctText);
+          }
         }
 
         // Baseline below planned bar
@@ -1078,24 +1176,72 @@ export class Visual implements IVisual {
 
   // ── Dependencies ─────────────────────────────────────────────────────────
   private renderDependencies(
-    tasks: GanttTask[], xScale: d3.ScaleTime<number, number>, rowH: number
+    tasks: GanttTask[], xScale: d3.ScaleTime<number, number>, rowH: number, color: string
   ): void {
-    const idxMap = new Map(tasks.map((t, i) => [t.id, i]));
+    // Build lookup with multiple keys so deps match by taskId, wbs, or name
+    const idxMap = new Map<string, number>();
+    tasks.forEach((t, i) => {
+      if (t.id)     idxMap.set(t.id, i);
+      if (t.taskId && !idxMap.has(t.taskId)) idxMap.set(t.taskId, i);
+      if (t.wbs    && !idxMap.has(t.wbs))    idxMap.set(t.wbs, i);
+      if (t.name   && !idxMap.has(t.name))   idxMap.set(t.name, i);
+    });
+
+    // ── DIAGNOSTIC LOG — remove after debugging ──
+    console.log("[GANTT-DEPS] idxMap keys:", Array.from(idxMap.keys()).slice(0, 20));
+    console.log("[GANTT-DEPS] sample tasks:", tasks.slice(0, 5).map(t => ({
+      id: t.id, taskId: t.taskId, wbs: t.wbs, deps: t.dependencies
+    })));
+    let matchCount = 0, missCount = 0;
+    tasks.forEach(t => t.dependencies.forEach(depId => {
+      if (idxMap.has(depId)) matchCount++; else missCount++;
+    }));
+    console.log(`[GANTT-DEPS] matches: ${matchCount}, misses: ${missCount}`);
     const g = this.bodySvg.append("g").classed("deps", true);
+    const R = 4; // corner radius
+
     tasks.forEach((task, toIdx) => {
       task.dependencies.forEach(depId => {
         const fromIdx = idxMap.get(depId);
         if (fromIdx === undefined) return;
         const from = tasks[fromIdx];
-        const x1 = xScale(from.plannedEnd);
+
+        // End of predecessor bar (+1 day)
+        const fromEndPlus1 = new Date(
+          from.plannedEnd.getFullYear(),
+          from.plannedEnd.getMonth(),
+          from.plannedEnd.getDate() + 1
+        );
+        const x1 = xScale(fromEndPlus1);
         const y1 = fromIdx * rowH + rowH / 2;
         const x2 = xScale(task.plannedStart);
         const y2 = toIdx   * rowH + rowH / 2;
-        const ex = Math.max(x1 + 10, x2 - 14);
+
+        // Elbow X: horizontal exit then vertical drop
+        const elbowX = Math.max(x1 + 10, x2 - 12);
+        const dy = y2 - y1;
+        const r  = Math.min(R, Math.abs(dy) / 2, Math.abs(elbowX - x1) / 2, Math.abs(x2 - elbowX) / 2);
+
+        let d: string;
+        if (Math.abs(dy) < 1) {
+          // Same row — straight horizontal
+          d = `M${x1} ${y1} L${x2} ${y2}`;
+        } else {
+          const sY = dy > 0 ? 1 : -1; // vertical direction sign
+          d = `M${x1} ${y1}`
+            + ` H${elbowX - r}`
+            + ` Q${elbowX} ${y1} ${elbowX} ${y1 + sY * r}`
+            + ` V${y2 - sY * r}`
+            + ` Q${elbowX} ${y2} ${elbowX + r} ${y2}`
+            + ` H${x2}`;
+        }
+
         g.append("path")
-          .attr("d", `M${x1} ${y1} H${ex} V${y2} H${x2}`)
-          .attr("fill", "none").attr("stroke", "#bec4cc")
-          .attr("stroke-width", 1.5).attr("marker-end", "url(#dep-arrow)");
+          .attr("d", d)
+          .attr("fill", "none")
+          .attr("stroke", color)
+          .attr("stroke-width", 1.2)
+          .attr("marker-end", "url(#dep-arrow)");
       });
     });
   }
@@ -1112,6 +1258,23 @@ export class Visual implements IVisual {
       const el  = nodes[i] as SVGGElement;
       const dim = this.viewModel?.tasks.find(t => t.id === el.getAttribute("data-id"))?.isHighlighted === false;
       d3.select(el).attr("opacity", dim ? 0.2 : 1);
+    });
+    // Update row background fills to reflect selection state
+    this.bodySvg.selectAll<SVGRectElement, unknown>(".row-bg").each((_, i, nodes) => {
+      const el   = nodes[i] as SVGRectElement;
+      const task = this.viewModel?.tasks.find(t => t.id === el.getAttribute("data-id"));
+      if (!task) return;
+      let fill: string;
+      if (task.isHighlighted === true) {
+        fill = "#b2e8e6";  // selected — teal tint
+      } else if (task.isHighlighted === false) {
+        fill = task.isSummary ? "#e6f7f6" : "#f5f5f5";  // dimmed
+      } else {
+        // No selection active — restore normal alternating background
+        const visIdx = this.viewModel!.tasks.filter(t => t.isVisible).indexOf(task);
+        fill = task.isSummary ? "#e6f7f6" : (visIdx % 2 === 0 ? "#fafbfc" : "#fff");
+      }
+      d3.select(el).attr("fill", fill);
     });
     this.sideBody.querySelectorAll<HTMLElement>(".sidebar-row").forEach(row => {
       const t = this.viewModel?.tasks.find(x => x.id === row.dataset.id);

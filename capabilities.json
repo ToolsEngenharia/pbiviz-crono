@@ -1,6 +1,7 @@
 {
   "dataRoles": [
     { "name": "taskName",     "kind": "GroupingOrMeasure", "displayName": "Nome da Tarefa" },
+    { "name": "taskId",       "kind": "GroupingOrMeasure", "displayName": "ID da Tarefa" },
     { "name": "wbs",          "kind": "GroupingOrMeasure", "displayName": "WBS" },
     { "name": "outlineLevel", "kind": "Measure",           "displayName": "Outline Level" },
     { "name": "plannedStart", "kind": "Measure",           "displayName": "Início Planejado" },
@@ -17,6 +18,7 @@
         "rows": {
           "select": [
             { "for": { "in": "taskName" } },
+            { "for": { "in": "taskId" } },
             { "for": { "in": "wbs" } },
             { "for": { "in": "outlineLevel" } },
             { "for": { "in": "plannedStart" } },
@@ -32,7 +34,33 @@
       }
     }
   ],
-  "objects": {},
+  "objects": {
+    "ganttColors": {
+      "properties": {
+        "plannedBarColor":        { "type": { "fill": { "solid": { "color": true } } } },
+        "summaryBarColor":        { "type": { "fill": { "solid": { "color": true } } } },
+        "baselineBarColor":       { "type": { "fill": { "solid": { "color": true } } } },
+        "progressColor":          { "type": { "fill": { "solid": { "color": true } } } },
+        "todayLineColor":         { "type": { "fill": { "solid": { "color": true } } } },
+        "milestoneColor":         { "type": { "fill": { "solid": { "color": true } } } },
+        "milestoneBaselineColor": { "type": { "fill": { "solid": { "color": true } } } },
+        "dependencyLineColor":   { "type": { "fill": { "solid": { "color": true } } } }
+      }
+    },
+    "ganttLayout": {
+      "properties": {
+        "rowHeight":        { "type": { "numeric": true } },
+        "wbsColumnWidth":   { "type": { "numeric": true } },
+        "taskLabelWidth":   { "type": { "numeric": true } },
+        "showDependencies": { "type": { "bool": true } },
+        "showToday":        { "type": { "bool": true } },
+        "showBaseline":     { "type": { "bool": true } },
+        "showStatusLabels": { "type": { "bool": true } },
+        "showStatusBar":    { "type": { "bool": true } },
+        "showWbs":          { "type": { "bool": true } }
+      }
+    }
+  },
   "privileges": [],
   "supportsHighlight": true,
   "supportsMultiVisualSelection": true,

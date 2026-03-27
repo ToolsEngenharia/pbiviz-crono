@@ -8,7 +8,7 @@ import FormattingSettingsModel = formattingSettings.Model;
 class ColorsCard extends FormattingSettingsCard {
   plannedBarColor = new formattingSettings.ColorPicker({
     name: "plannedBarColor", displayName: "Barra Planejada",
-    value: { value: "#4472C4" },
+    value: { value: "#0E938E" },
   });
   baselineBarColor = new formattingSettings.ColorPicker({
     name: "baselineBarColor", displayName: "Barra Baseline",
@@ -24,22 +24,32 @@ class ColorsCard extends FormattingSettingsCard {
   });
   milestoneColor = new formattingSettings.ColorPicker({
     name: "milestoneColor", displayName: "Marco (losango)",
-    value: { value: "#2C3E6B" },
+    value: { value: "#0E938E" },
   });
   milestoneBaselineColor = new formattingSettings.ColorPicker({
     name: "milestoneBaselineColor", displayName: "Marco Baseline (ponto)",
     value: { value: "#F5C400" },
+  });
+  summaryBarColor = new formattingSettings.ColorPicker({
+    name: "summaryBarColor", displayName: "Barra Resumo",
+    value: { value: "#0E938E" },
+  });
+  dependencyLineColor = new formattingSettings.ColorPicker({
+    name: "dependencyLineColor", displayName: "Linha de Dependência",
+    value: { value: "#d1d5db" },
   });
 
   name = "ganttColors";
   displayName = "Cores";
   slices: FormattingSettingsSlice[] = [
     this.plannedBarColor,
+    this.summaryBarColor,
     this.baselineBarColor,
     this.progressColor,
     this.todayLineColor,
     this.milestoneColor,
     this.milestoneBaselineColor,
+    this.dependencyLineColor,
   ];
 }
 
@@ -75,12 +85,22 @@ class LayoutCard extends FormattingSettingsCard {
   showBaseline = new formattingSettings.ToggleSwitch({
     name: "showBaseline", displayName: "Exibir Baseline", value: true,
   });
+  showStatusLabels = new formattingSettings.ToggleSwitch({
+    name: "showStatusLabels", displayName: "Exibir Labels de Status", value: true,
+  });
+  showStatusBar = new formattingSettings.ToggleSwitch({
+    name: "showStatusBar", displayName: "Exibir Barra de Status", value: true,
+  });
+  showWbs = new formattingSettings.ToggleSwitch({
+    name: "showWbs", displayName: "Exibir WBS", value: true,
+  });
 
   name = "ganttLayout";
   displayName = "Layout";
   slices: FormattingSettingsSlice[] = [
     this.rowHeight, this.wbsColumnWidth, this.taskLabelWidth,
     this.showDependencies, this.showToday, this.showBaseline,
+    this.showStatusLabels, this.showStatusBar, this.showWbs,
   ];
 }
 

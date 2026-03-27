@@ -6,10 +6,10 @@
 @text-primary:   #111827;
 @text-secondary: #6b7280;
 @text-muted:     #9ca3af;
-@summary-bg:     #eef2ff;
-@summary-text:   #1e3a8a;
-@selected-bg:    #dbeafe;
-@hover-bg:       #eff6ff;
+@summary-bg:     #e6f7f6;
+@summary-text:   #0E938E;
+@selected-bg:    #b2e8e6;
+@hover-bg:       #f0fafa;
 
 // ── Root: full viewport, flex row ─────────────────────────────────────────────
 .gantt-root {
@@ -145,7 +145,7 @@
       .task-diamond {
         flex-shrink: 0;
         width: 8px; height: 8px;
-        background: #2C3E6B;
+        background: #0E938E;
         transform: rotate(45deg);
         border-radius: 1px;
       }
@@ -156,7 +156,24 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        flex: 1;
+        min-width: 0;
         &.summary { font-weight: 700; color: @summary-text; }
+      }
+
+      .task-status-badge {
+        flex-shrink: 0;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.3px;
+        border-radius: 4px;
+        padding: 1px 5px;
+        white-space: nowrap;
+        &.late       { background: rgba(239,68,68,0.12);   color: #dc2626; border: 1px solid rgba(239,68,68,0.3); }
+        &.early      { background: rgba(16,185,129,0.12);  color: #059669; border: 1px solid rgba(16,185,129,0.3); }
+        &.done       { background: rgba(107,114,128,0.12); color: #4b5563; border: 1px solid rgba(107,114,128,0.3); }
+        &.inprogress { background: rgba(14,147,142,0.12);  color: #0E938E; border: 1px solid rgba(14,147,142,0.3); }
+        &.ontime     { background: rgba(156,163,175,0.10); color: #6b7280; border: 1px solid rgba(156,163,175,0.25); }
       }
     }
   }
@@ -216,7 +233,7 @@
     display: inline-block;
     font-size: 9px;
     font-weight: 700;
-    background: #2C3E6B;
+    background: #0E938E;
     color: #93c5fd;
     letter-spacing: 0.5px;
     text-transform: uppercase;
@@ -366,7 +383,7 @@
   }
 }
 
-// ── Status filter bar ─────────────────────────────────────────────────────────
+// ── Status filter bar (collapsible) ───────────────────────────────────────────
 .filter-bar {
   position: absolute;
   bottom: 10px;
@@ -374,48 +391,79 @@
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 1px;
   z-index: 50;
   user-select: none;
-  background: rgba(255,255,255,0.92);
+  background: rgba(255,255,255,0.95);
   border: 1px solid #d1d5db;
-  border-radius: 14px;
-  padding: 3px 6px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-  backdrop-filter: blur(4px);
-}
+  border-radius: 12px;
+  padding: 2px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  backdrop-filter: blur(6px);
+  transition: all 0.2s ease;
+  overflow: hidden;
 
-.filter-label {
-  font-size: 10px;
-  font-weight: 700;
-  color: #6b7280;
-  margin-right: 2px;
-  font-family: @font;
+  // Collapsed: hide non-active buttons
+  &.collapsed .filter-btn:not(.active) {
+    width: 0;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    opacity: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  // Chevron: only visible on active button when collapsed
+  .filter-chevron { display: none; }
+  &.collapsed .filter-btn.active .filter-chevron { display: inline; }
 }
 
 .filter-btn {
-  height: 20px;
-  padding: 0 8px;
+  height: 22px;
+  padding: 0 9px;
   border: 1px solid transparent;
   border-radius: 10px;
   background: transparent;
   cursor: pointer;
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 600;
   font-family: @font;
   color: #6b7280;
   white-space: nowrap;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-  line-height: 1;
+  transition: all 0.18s ease;
+  line-height: 22px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+
+  .filter-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    transition: all 0.15s ease;
+  }
+
+  .filter-chevron {
+    font-size: 8px;
+    margin-left: -1px;
+    opacity: 0.5;
+    transition: transform 0.2s ease;
+  }
 
   &:hover:not(.active) { background: #e5e7eb; color: #374151; }
 
-  &.active.all        { background: #fff; color: #1d4ed8; border-color: #93b4f4; font-weight: 700; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-  &.active.inprogress { background: rgba(96,165,250,0.15); color: #3b82f6; border-color: #93b4f4; font-weight: 700; }
-  &.active.late       { background: rgba(248,113,113,0.15); color: #ef4444; border-color: #f9a8a8; font-weight: 700; }
-  &.active.early      { background: rgba(52,211,153,0.15); color: #10b981; border-color: #6ee7b7; font-weight: 700; }
-  &.active.ontime     { background: rgba(52,211,153,0.15); color: #10b981; border-color: #6ee7b7; font-weight: 700; }
-  &.active.neutral    { background: rgba(156,163,175,0.15); color: #6b7280; border-color: #9ca3af; font-weight: 700; }
+  &.active {
+    font-weight: 700;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  &.active.all        { background: #fff; color: #374151; border-color: #d1d5db; }
+  &.active.inprogress { background: rgba(96,165,250,0.12); color: #2563eb; border-color: rgba(96,165,250,0.35); }
+  &.active.late       { background: rgba(248,113,113,0.12); color: #dc2626; border-color: rgba(248,113,113,0.35); }
+  &.active.early      { background: rgba(52,211,153,0.12); color: #059669; border-color: rgba(52,211,153,0.35); }
+  &.active.done       { background: rgba(156,163,175,0.12); color: #4b5563; border-color: rgba(156,163,175,0.35); }
+  &.active.neutral    { background: rgba(156,163,175,0.10); color: #6b7280; border-color: rgba(156,163,175,0.30); }
 }
 
 // ── Zoom controls ─────────────────────────────────────────────────────────────
@@ -462,7 +510,7 @@
 
   &.active {
     background: #fff;
-    color: #1d4ed8;
+    color: #0E938E;
     font-weight: 700;
     box-shadow: 0 1px 3px rgba(0,0,0,0.12);
   }
@@ -532,7 +580,7 @@
 
   &:hover::after,
   &:active::after {
-    background: #4472C4;
+    background: #0E938E;
   }
 }
 
@@ -554,8 +602,8 @@
   z-index: 25;
 
   &:hover {
-    background: #f0f4ff;
-    border-color: #4472C4;
-    color: #4472C4;
+    background: #f0fafa;
+    border-color: #0E938E;
+    color: #0E938E;
   }
 }

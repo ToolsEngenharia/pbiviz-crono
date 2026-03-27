@@ -1,5 +1,6 @@
 export interface GanttTask {
   id: string;
+  taskId: string;
   name: string;
   wbs: string;
   outlineLevel: number;
@@ -19,11 +20,13 @@ export interface GanttTask {
 export interface GanttSettings {
   colors: {
     plannedBarColor: string;
+    summaryBarColor: string;
     baselineBarColor: string;
     progressColor: string;
     todayLineColor: string;
     milestoneColor: string;
     milestoneBaselineColor: string;
+    dependencyLineColor: string;
   };
   layout: {
     rowHeight: number;
@@ -32,17 +35,22 @@ export interface GanttSettings {
     showDependencies: boolean;
     showToday: boolean;
     showBaseline: boolean;
+    showStatusLabels: boolean;
+    showStatusBar: boolean;
+    showWbs: boolean;
   };
 }
 
 export const DEFAULT_SETTINGS: GanttSettings = {
   colors: {
-    plannedBarColor:        "#4472C4",
+    plannedBarColor:        "#0E938E",
+    summaryBarColor:        "#0E938E",
     baselineBarColor:       "#A5A5A5",
     progressColor:          "#70AD47",
     todayLineColor:         "#f66a0a",
-    milestoneColor:         "#2C3E6B",
+    milestoneColor:         "#0E938E",
     milestoneBaselineColor: "#F5C400",
+    dependencyLineColor:    "#d1d5db",
   },
   layout: {
     rowHeight:        36,
@@ -51,6 +59,9 @@ export const DEFAULT_SETTINGS: GanttSettings = {
     showDependencies: true,
     showToday:        true,
     showBaseline:     true,
+    showStatusLabels: true,
+    showStatusBar:    true,
+    showWbs:          true,
   },
 };
 

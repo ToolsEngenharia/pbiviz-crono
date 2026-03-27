@@ -11,6 +11,7 @@ export function parseDataView(dataView: DataView, host: IVisualHost): GanttViewM
 
   const idx = {
     taskName:     columns.findIndex(c => c.roles?.taskName),
+    taskId:       columns.findIndex(c => c.roles?.taskId),
     wbs:          columns.findIndex(c => c.roles?.wbs),
     outlineLevel: columns.findIndex(c => c.roles?.outlineLevel),
     plannedStart: columns.findIndex(c => c.roles?.plannedStart),
@@ -24,8 +25,22 @@ export function parseDataView(dataView: DataView, host: IVisualHost): GanttViewM
 
   const tasks: GanttTask[] = [];
 
+  // ── DIAGNOSTIC LOG — remove after debugging ──
+  console.log("[GANTT-PARSER] column indices:", idx);
+  if (rows.length > 0) {
+    const r0 = rows[0];
+    console.log("[GANTT-PARSER] first row raw values:", {
+      taskId: idx.taskId >= 0 ? r0[idx.taskId] : "N/A (idx=-1)",
+      taskIdType: idx.taskId >= 0 ? typeof r0[idx.taskId] : "N/A",
+      wbs: idx.wbs >= 0 ? r0[idx.wbs] : "N/A",
+      deps: idx.dependencies >= 0 ? r0[idx.dependencies] : "N/A",
+    });
+  }
+
   rows.forEach((row, rowIndex) => {
     const name         = idx.taskName >= 0     ? String(row[idx.taskName]     ?? `Tarefa ${rowIndex + 1}`) : `Tarefa ${rowIndex + 1}`;
+    const taskIdRaw    = idx.taskId >= 0       ? String(row[idx.taskId]       ?? "") : "";
+    const taskId       = normalizeId(taskIdRaw);
     const wbs          = idx.wbs >= 0          ? String(row[idx.wbs]          ?? "") : "";
     const outlineLevel = idx.outlineLevel >= 0 ? Number(row[idx.outlineLevel] ?? 1)  : 1;
     const plannedStart = idx.plannedStart >= 0 ? parseDate(row[idx.plannedStart]) : null;
@@ -51,7 +66,7 @@ export function parseDataView(dataView: DataView, host: IVisualHost): GanttViewM
     const rawProgress    = idx.progress >= 0 ? Number(row[idx.progress] ?? 0) : 0;
     const progress       = clamp(rawProgress > 0 && rawProgress <= 1 ? rawProgress * 100 : rawProgress, 0, 100);
     const depsRaw        = idx.dependencies >= 0 ? String(row[idx.dependencies] ?? "") : "";
-    const dependencies   = depsRaw ? depsRaw.split(",").map(d => d.trim()).filter(Boolean) : [];
+    const dependencies   = depsRaw ? parseDependencies(depsRaw) : [];
 
     const selectionId = host
       .createSelectionIdBuilder()
@@ -59,7 +74,8 @@ export function parseDataView(dataView: DataView, host: IVisualHost): GanttViewM
       .createSelectionId();
 
     tasks.push({
-      id: wbs || name,
+      id: taskId || wbs || name,
+      taskId,
       name, wbs, outlineLevel,
       isSummary: false,
       isMilestone,
@@ -118,8 +134,37 @@ function parseDate(value: powerbi.PrimitiveValue): Date | null {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
 }
 
+/**
+ * Normalize an ID string: trim, remove trailing .0/.00, collapse whitespace.
+ * Handles Power BI sending numbers as "929.0" or " 929 " etc.
+ */
+function normalizeId(s: string): string {
+  return s.trim().replace(/\.0+$/, "");
+}
+
 function clamp(val: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, val));
+}
+
+/**
+ * Parse dependency string from MS Project / P6 / etc.
+ * Handles: "1000;873", "938,941", "1000IT", "500TT+5d", "200FF-3", "100SS+10d"
+ * Strips link-type suffixes (IT/TT/II/TI/SS/SF/FS/FF) and optional lag (+/-Nd).
+ * Splits by ";" or ",".
+ */
+function parseDependencies(raw: string): string[] {
+  // Split by semicolon or comma
+  return raw.split(/[;,]/)
+    .map(d => {
+      // Remove whitespace
+      let s = d.trim();
+      // Strip optional lag: +5d, -3d, +10, -2, +5 dias, etc.
+      s = s.replace(/[+\-]\s*\d+\s*[dD]?\w*$/, "");
+      // Strip link-type suffix (case-insensitive): IT, TT, II, TI, SS, SF, FS, FF
+      s = s.replace(/\s*(IT|TT|II|TI|SS|SF|FS|FF)\s*$/i, "");
+      return normalizeId(s);
+    })
+    .filter(Boolean);
 }
 
 function compareWbs(a: string, b: string): number {
