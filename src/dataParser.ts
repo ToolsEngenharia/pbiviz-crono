@@ -7,20 +7,20 @@ export function parseDataView(dataView: DataView, host: IVisualHost): GanttViewM
   if (!dataView?.table?.rows || dataView.table.rows.length === 0) return null;
 
   const columns = dataView.table.columns;
-  const rows    = dataView.table.rows;
+  const rows = dataView.table.rows;
 
   const idx = {
-    taskName:     columns.findIndex(c => c.roles?.taskName),
-    taskId:       columns.findIndex(c => c.roles?.taskId),
-    wbs:          columns.findIndex(c => c.roles?.wbs),
+    taskName: columns.findIndex(c => c.roles?.taskName),
+    taskId: columns.findIndex(c => c.roles?.taskId),
+    wbs: columns.findIndex(c => c.roles?.wbs),
     outlineLevel: columns.findIndex(c => c.roles?.outlineLevel),
     plannedStart: columns.findIndex(c => c.roles?.plannedStart),
-    plannedEnd:   columns.findIndex(c => c.roles?.plannedEnd),
-    baselineStart:columns.findIndex(c => c.roles?.baselineStart),
-    baselineEnd:  columns.findIndex(c => c.roles?.baselineEnd),
-    progress:     columns.findIndex(c => c.roles?.progress),
+    plannedEnd: columns.findIndex(c => c.roles?.plannedEnd),
+    baselineStart: columns.findIndex(c => c.roles?.baselineStart),
+    baselineEnd: columns.findIndex(c => c.roles?.baselineEnd),
+    progress: columns.findIndex(c => c.roles?.progress),
     dependencies: columns.findIndex(c => c.roles?.dependencies),
-    isMilestone:  columns.findIndex(c => c.roles?.isMilestone),
+    isMilestone: columns.findIndex(c => c.roles?.isMilestone),
   };
 
   const tasks: GanttTask[] = [];
@@ -38,39 +38,39 @@ export function parseDataView(dataView: DataView, host: IVisualHost): GanttViewM
   }
 
   rows.forEach((row, rowIndex) => {
-    const name         = idx.taskName >= 0     ? String(row[idx.taskName]     ?? `Tarefa ${rowIndex + 1}`) : `Tarefa ${rowIndex + 1}`;
-    const taskIdRaw    = idx.taskId >= 0       ? String(row[idx.taskId]       ?? "") : "";
-    const taskId       = normalizeId(taskIdRaw);
-    const wbs          = idx.wbs >= 0          ? String(row[idx.wbs]          ?? "") : "";
-    const outlineLevel = idx.outlineLevel >= 0 ? Number(row[idx.outlineLevel] ?? 1)  : 1;
+    const name = idx.taskName >= 0 ? String(row[idx.taskName] ?? `Tarefa ${rowIndex + 1}`) : `Tarefa ${rowIndex + 1}`;
+    const taskIdRaw = idx.taskId >= 0 ? String(row[idx.taskId] ?? "") : "";
+    const taskId = normalizeId(taskIdRaw);
+    const wbs = idx.wbs >= 0 ? String(row[idx.wbs] ?? "") : "";
+    const outlineLevel = idx.outlineLevel >= 0 ? Number(row[idx.outlineLevel] ?? 1) : 1;
     const plannedStart = idx.plannedStart >= 0 ? parseDate(row[idx.plannedStart]) : null;
-    const plannedEnd   = idx.plannedEnd >= 0   ? parseDate(row[idx.plannedEnd])   : null;
+    const plannedEnd = idx.plannedEnd >= 0 ? parseDate(row[idx.plannedEnd]) : null;
 
     if (!plannedStart || !plannedEnd) return;
 
     // Milestone: field can be boolean true, string "true"/"1", or number 1
-    const msRaw    = idx.isMilestone >= 0 ? row[idx.isMilestone] : null;
+    const msRaw = idx.isMilestone >= 0 ? row[idx.isMilestone] : null;
     // Power BI boolean columns can arrive as: boolean true/false,
     // number 1/0, or string "True"/"False" (capital T/F from DAX).
     // Any non-empty string that is NOT explicitly "false"/"0" must NOT be treated as true.
     let isMilestone = false;
-    if (msRaw === true  || msRaw === 1)  isMilestone = true;
+    if (msRaw === true || msRaw === 1) isMilestone = true;
     else if (msRaw === false || msRaw === 0) isMilestone = false;
     else if (typeof msRaw === "string") {
       const ms = msRaw.trim().toLowerCase();
       isMilestone = ms === "true" || ms === "1";
     }
 
-    const baselineStart  = idx.baselineStart >= 0 ? parseDate(row[idx.baselineStart]) : null;
-    const baselineEnd    = idx.baselineEnd >= 0   ? parseDate(row[idx.baselineEnd])   : null;
-    const rawProgress    = idx.progress >= 0 ? Number(row[idx.progress] ?? 0) : 0;
-    const progress       = clamp(rawProgress > 0 && rawProgress <= 1 ? rawProgress * 100 : rawProgress, 0, 100);
-    const depsRaw        = idx.dependencies >= 0 ? String(row[idx.dependencies] ?? "") : "";
-    const dependencies   = depsRaw ? parseDependencies(depsRaw) : [];
+    const baselineStart = idx.baselineStart >= 0 ? parseDate(row[idx.baselineStart]) : null;
+    const baselineEnd = idx.baselineEnd >= 0 ? parseDate(row[idx.baselineEnd]) : null;
+    const rawProgress = idx.progress >= 0 ? Number(row[idx.progress] ?? 0) : 0;
+    const progress = clamp(rawProgress > 0 && rawProgress <= 1 ? rawProgress * 100 : rawProgress, 0, 100);
+    const depsRaw = idx.dependencies >= 0 ? String(row[idx.dependencies] ?? "") : "";
+    const dependencies = depsRaw ? parseDependencies(depsRaw) : [];
 
     const selectionId = host
       .createSelectionIdBuilder()
-      .withTable(dataView.table, rowIndex)
+      .withTable(dataView.table!, rowIndex)
       .createSelectionId();
 
     tasks.push({

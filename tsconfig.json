@@ -6,8 +6,10 @@
         "target": "es2022",
         "sourceMap": true,
         "outDir": "./.tmp/build/",
+        "rootDir": "./src",
         "moduleResolution": "node",
         "declaration": true,
+        "ignoreDeprecations": "6.0",
         "lib": [
             "es2022",
             "dom"

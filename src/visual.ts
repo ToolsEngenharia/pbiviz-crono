@@ -6,22 +6,22 @@ import { parseDataView } from "./dataParser";
 import { GanttViewModel, GanttTask } from "./interfaces";
 
 import VisualConstructorOptions = powerbi.extensibility.visual.VisualConstructorOptions;
-import VisualUpdateOptions      = powerbi.extensibility.visual.VisualUpdateOptions;
-import IVisual                  = powerbi.extensibility.visual.IVisual;
-import IVisualHost              = powerbi.extensibility.visual.IVisualHost;
-import ISelectionManager        = powerbi.extensibility.ISelectionManager;
-import IVisualEventService      = powerbi.extensibility.IVisualEventService;
+import VisualUpdateOptions = powerbi.extensibility.visual.VisualUpdateOptions;
+import IVisual = powerbi.extensibility.visual.IVisual;
+import IVisualHost = powerbi.extensibility.visual.IVisualHost;
+import ISelectionManager = powerbi.extensibility.ISelectionManager;
+import IVisualEventService = powerbi.extensibility.IVisualEventService;
 
 import "../style/visual.less";
 
 // ── Zoom levels ───────────────────────────────────────────────────────────────
 interface ZoomLevel {
-  minPx:          number;
-  label:          string;
-  topInterval:    d3.CountableTimeInterval;
-  topFmt:         (d: Date) => string;
+  minPx: number;
+  label: string;
+  topInterval: d3.CountableTimeInterval;
+  topFmt: (d: Date) => string;
   bottomInterval: d3.CountableTimeInterval;
-  bottomFmt:      (d: Date, i: number, all: Date[]) => string;
+  bottomFmt: (d: Date, i: number, all: Date[]) => string;
 }
 
 const ZOOM_LEVELS: ZoomLevel[] = [
@@ -64,7 +64,7 @@ function fullTicks(
   const [d0, d1] = scale.domain() as Date[];
   // floor start to interval boundary
   const start = interval.floor(d0);
-  const raw   = interval.range(start, d1);
+  const raw = interval.range(start, d1);
   // ensure domain start is represented
   if (raw.length === 0 || raw[0].getTime() > d0.getTime()) {
     raw.unshift(start);
@@ -74,11 +74,11 @@ function fullTicks(
 
 // ─────────────────────────────────────────────────────────────────────────────
 export class Visual implements IVisual {
-  private host:             IVisualHost;
+  private host: IVisualHost;
   private selectionManager: ISelectionManager;
-  private events:           IVisualEventService;
-  private fmtService:       FormattingSettingsService;
-  private fmtSettings:      GanttFormattingSettings;
+  private events: IVisualEventService;
+  private fmtService: FormattingSettingsService;
+  private fmtSettings: GanttFormattingSettings;
 
   // DOM structure
   // root
@@ -90,39 +90,39 @@ export class Visual implements IVisual {
   //              └── chart-body-wrap  (overflow:auto, flex:1)
   //                    └── bodySvg    (width = chartW, height = totalH)
 
-  private root:           HTMLElement;
-  private sidebar:        HTMLElement;
-  private sideBody:       HTMLElement;
-  private chartHeaderWrap:HTMLElement;
-  private chartBodyWrap:  HTMLElement;
-  private headerSvg:      d3.Selection<SVGSVGElement, unknown, null, undefined>;
-  private bodySvg:        d3.Selection<SVGSVGElement, unknown, null, undefined>;
-  private tooltip:        HTMLElement;
-  private todayPill:      HTMLElement;
-  private zoomBtns:       HTMLButtonElement[] = [];
+  private root: HTMLElement;
+  private sidebar: HTMLElement;
+  private sideBody: HTMLElement;
+  private chartHeaderWrap: HTMLElement;
+  private chartBodyWrap: HTMLElement;
+  private headerSvg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
+  private bodySvg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
+  private tooltip: HTMLElement;
+  private todayPill: HTMLElement;
+  private zoomBtns: HTMLButtonElement[] = [];
 
   private viewModel: GanttViewModel | null = null;
-  private collapsed  = new Set<string>();
+  private collapsed = new Set<string>();
   private statusFilter: string | null = null;  // null = show all
   private filterBtns: HTMLButtonElement[] = [];
 
-  private pxPerDay   = 0.5;
-  private firstLoad   = true;   // auto-fit only once
+  private pxPerDay = 0.5;
+  private firstLoad = true;   // auto-fit only once
   // Fixed zoom steps — index 0 = fit-to-width (computed), 1 = ANO/MÊS, 2 = MÊS/DIA
   private readonly ZOOM_STEPS_FIXED = [5, 30];
-  private zoomIdx    = 0;      // 0 = fit, 1+ = ZOOM_STEPS_FIXED[zoomIdx-1]
+  private zoomIdx = 0;      // 0 = fit, 1+ = ZOOM_STEPS_FIXED[zoomIdx-1]
 
   /** Compute pxPerDay for fit-to-width mode (zoomIdx 0) */
   private computeFitPxPerDay(): number {
     if (!this.viewModel) return 0.5;
     const { minDate, maxDate } = this.viewModel;
-    const daySpan  = Math.max(Math.ceil((maxDate.getTime() - minDate.getTime()) / 86400000), 1);
-    const s        = this.fmtSettings;
-    const wbsW     = (this.fmtSettings.layout.showWbs.value && this.showWbs)
+    const daySpan = Math.max(Math.ceil((maxDate.getTime() - minDate.getTime()) / 86400000), 1);
+    const s = this.fmtSettings;
+    const wbsW = (this.fmtSettings.layout.showWbs.value && this.showWbs)
       ? s.layout.wbsColumnWidth.value : 0;
     // Subtract scrollbar width (~12px) to avoid horizontal scroll when vertical scroll is present
     const scrollbarW = 12;
-    const availW   = Math.max(this.vpWidth - wbsW - this.sidebarLabelW - scrollbarW, 60);
+    const availW = Math.max(this.vpWidth - wbsW - this.sidebarLabelW - scrollbarW, 60);
     return Math.max(0.1, availW / daySpan);
   }
 
@@ -132,28 +132,28 @@ export class Visual implements IVisual {
     return this.ZOOM_STEPS_FIXED[this.zoomIdx - 1];
   }
 
-  private vpWidth  = 800;
+  private vpWidth = 800;
   private vpHeight = 400;
 
   // Sidebar state
-  private showWbs      = true;
+  private showWbs = true;
   private sidebarLabelW = 220;   // resizable (task name column width)
-  private isDragging   = false;
-  private dragStartX   = 0;
-  private dragStartW   = 0;
+  private isDragging = false;
+  private dragStartX = 0;
+  private dragStartW = 0;
 
-  private readonly HEADER_H  = 52;
+  private readonly HEADER_H = 52;
   private readonly TOP_ROW_H = 26;
   private readonly BOT_ROW_H = 26;
-  private readonly BAR_R     = 4;
+  private readonly BAR_R = 4;
   private readonly INDENT_PX = 12;   // reduced indent per level
 
   constructor(options: VisualConstructorOptions) {
-    this.host             = options.host;
-    this.events           = options.host.eventService;
+    this.host = options.host;
+    this.events = options.host.eventService;
     this.selectionManager = options.host.createSelectionManager();
-    this.fmtService       = new FormattingSettingsService();
-    this.fmtSettings      = new GanttFormattingSettings();
+    this.fmtService = new FormattingSettingsService();
+    this.fmtSettings = new GanttFormattingSettings();
 
     this.selectionManager.registerOnSelectCallback(() => this.syncHighlight());
 
@@ -207,7 +207,7 @@ export class Visual implements IVisual {
     // Sync horizontal scroll: body → header
     this.chartBodyWrap.addEventListener("scroll", () => {
       this.chartHeaderWrap.scrollLeft = this.chartBodyWrap.scrollLeft;
-      this.sideBody.scrollTop         = this.chartBodyWrap.scrollTop;
+      this.sideBody.scrollTop = this.chartBodyWrap.scrollTop;
     });
     this.sideBody.addEventListener("scroll", () => {
       this.chartBodyWrap.scrollTop = this.sideBody.scrollTop;
@@ -232,17 +232,17 @@ export class Visual implements IVisual {
     this.root.appendChild(filterBar);
 
     const FILTER_OPTIONS: { key: string | null; label: string; cls: string; dot: string }[] = [
-      { key: null,            label: "Todos",      cls: "all",        dot: "" },
-      { key: "em_andamento",  label: "Andamento",  cls: "inprogress", dot: "#3b82f6" },
-      { key: "atrasado",      label: "Atrasado",   cls: "late",       dot: "#ef4444" },
-      { key: "adiantado",     label: "Adiantado",  cls: "early",      dot: "#10b981" },
-      { key: "concluida",     label: "Concluída",  cls: "done",       dot: "#6b7280" },
-      { key: "no_prazo",      label: "No prazo",   cls: "neutral",    dot: "#9ca3af" },
+      { key: null, label: "Todos", cls: "all", dot: "" },
+      { key: "em_andamento", label: "Andamento", cls: "inprogress", dot: "#3b82f6" },
+      { key: "atrasado", label: "Atrasado", cls: "late", dot: "#ef4444" },
+      { key: "adiantado", label: "Adiantado", cls: "early", dot: "#10b981" },
+      { key: "concluida", label: "Concluída", cls: "done", dot: "#6b7280" },
+      { key: "no_prazo", label: "No prazo", cls: "neutral", dot: "#9ca3af" },
     ];
 
     const isFilterExpanded = () => !filterBar.classList.contains("collapsed");
-    const collapseFilter   = () => filterBar.classList.add("collapsed");
-    const expandFilter     = () => filterBar.classList.remove("collapsed");
+    const collapseFilter = () => filterBar.classList.add("collapsed");
+    const expandFilter = () => filterBar.classList.remove("collapsed");
 
     // Click outside → collapse
     document.addEventListener("mousedown", (ev: MouseEvent) => {
@@ -309,16 +309,16 @@ export class Visual implements IVisual {
       btn.title = ["Ajustar ao viewport (Ctrl+scroll)", "Zoom: ano / mês", "Zoom: mês / dia"][idx];
       btn.addEventListener("click", () => {
         if (this.zoomIdx === idx) return;
-        this.zoomIdx  = idx;
+        this.zoomIdx = idx;
         this.pxPerDay = this.resolvePxPerDay();
         this.updateZoomToggle();
         if (this.viewModel) {
           const scrollMax = this.chartBodyWrap.scrollWidth - this.chartBodyWrap.clientWidth;
-          const ratio     = scrollMax > 0 ? this.chartBodyWrap.scrollLeft / scrollMax : 0;
+          const ratio = scrollMax > 0 ? this.chartBodyWrap.scrollLeft / scrollMax : 0;
           this.computeVisibility();
           this.render(this.vpWidth, this.vpHeight);
           const newScrollMax = this.chartBodyWrap.scrollWidth - this.chartBodyWrap.clientWidth;
-          this.chartBodyWrap.scrollLeft   = Math.round(ratio * newScrollMax);
+          this.chartBodyWrap.scrollLeft = Math.round(ratio * newScrollMax);
           this.chartHeaderWrap.scrollLeft = this.chartBodyWrap.scrollLeft;
         }
       });
@@ -358,9 +358,9 @@ export class Visual implements IVisual {
     this.root.appendChild(resizeHandle);
 
     resizeHandle.addEventListener("mousedown", (ev: MouseEvent) => {
-      this.isDragging  = true;
-      this.dragStartX  = ev.clientX;
-      this.dragStartW  = this.sidebarLabelW;
+      this.isDragging = true;
+      this.dragStartX = ev.clientX;
+      this.dragStartW = this.sidebarLabelW;
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
       ev.preventDefault();
@@ -369,10 +369,10 @@ export class Visual implements IVisual {
     window.addEventListener("mousemove", (ev: MouseEvent) => {
       if (!this.isDragging) return;
       const delta = ev.clientX - this.dragStartX;
-      const wbsW  = (this.fmtSettings.layout.showWbs.value && this.showWbs)
+      const wbsW = (this.fmtSettings.layout.showWbs.value && this.showWbs)
         ? this.fmtSettings.layout.wbsColumnWidth.value : 0;
-      const minW  = 80;
-      const maxW  = Math.max(this.vpWidth - wbsW - 200, 120);
+      const minW = 80;
+      const maxW = Math.max(this.vpWidth - wbsW - 200, 120);
       this.sidebarLabelW = Math.min(maxW, Math.max(minW, this.dragStartW + delta));
       if (this.viewModel) this.render(this.vpWidth, this.vpHeight);
     });
@@ -402,15 +402,15 @@ export class Visual implements IVisual {
   private scrollToToday(): void {
     if (!this.viewModel) return;
     const { minDate, maxDate } = this.viewModel;
-    const _n    = new Date();
+    const _n = new Date();
     const today = new Date(_n.getFullYear(), _n.getMonth(), _n.getDate());
     if (today < minDate || today > maxDate) return;
 
     const daySpan = Math.max(Math.ceil((maxDate.getTime() - minDate.getTime()) / 86400000), 1);
-    const chartW  = Math.round(daySpan * this.pxPerDay);
-    const todayX  = Math.round(((today.getTime() - minDate.getTime()) / 86400000) * this.pxPerDay);
-    const wrapW   = this.chartBodyWrap.clientWidth;
-    const target  = Math.max(0, Math.min(todayX - wrapW / 2, chartW - wrapW));
+    const chartW = Math.round(daySpan * this.pxPerDay);
+    const todayX = Math.round(((today.getTime() - minDate.getTime()) / 86400000) * this.pxPerDay);
+    const wrapW = this.chartBodyWrap.clientWidth;
+    const target = Math.max(0, Math.min(todayX - wrapW / 2, chartW - wrapW));
 
     this.chartBodyWrap.scrollTo({ left: target, behavior: "smooth" });
   }
@@ -421,12 +421,12 @@ export class Visual implements IVisual {
     if (!this.viewModel) return;
     const { minDate, maxDate } = this.viewModel;
     const daySpan = Math.max(Math.ceil((maxDate.getTime() - minDate.getTime()) / 86400000), 1);
-    const chartW  = Math.round(daySpan * this.pxPerDay);
-    const wrapW   = this.chartBodyWrap.clientWidth;
+    const chartW = Math.round(daySpan * this.pxPerDay);
+    const wrapW = this.chartBodyWrap.clientWidth;
 
     // Center horizontally on the task bar midpoint
     const taskMid = (task.plannedStart.getTime() + task.plannedEnd.getTime()) / 2;
-    const taskX   = Math.round(((taskMid - minDate.getTime()) / 86400000) * this.pxPerDay);
+    const taskX = Math.round(((taskMid - minDate.getTime()) / 86400000) * this.pxPerDay);
     const targetX = Math.max(0, Math.min(taskX - wrapW / 2, chartW - wrapW));
 
     this.chartBodyWrap.scrollTo({ left: targetX, behavior: "smooth" });
@@ -436,26 +436,26 @@ export class Visual implements IVisual {
     this.zoomBtns.forEach((btn, i) => btn.classList.toggle("active", i === this.zoomIdx));
   }
 
-    private adjustZoom(direction: number): void {
+  private adjustZoom(direction: number): void {
     const maxIdx = this.ZOOM_STEPS_FIXED.length; // 0=fit, 1..N=fixed
     const newIdx = Math.min(maxIdx, Math.max(0,
       this.zoomIdx + (direction > 0 ? 1 : -1)));
     if (newIdx === this.zoomIdx) return;
-    this.zoomIdx  = newIdx;
+    this.zoomIdx = newIdx;
     this.pxPerDay = this.resolvePxPerDay();
     this.updateZoomToggle();
 
     if (this.viewModel) {
       // Preserve scroll position proportionally so chart doesn't jump
       const scrollMax = this.chartBodyWrap.scrollWidth - this.chartBodyWrap.clientWidth;
-      const ratio     = scrollMax > 0 ? this.chartBodyWrap.scrollLeft / scrollMax : 0;
+      const ratio = scrollMax > 0 ? this.chartBodyWrap.scrollLeft / scrollMax : 0;
 
       this.computeVisibility();
       this.render(this.vpWidth, this.vpHeight);
 
       // Restore proportional scroll position after render changed content width
       const newScrollMax = this.chartBodyWrap.scrollWidth - this.chartBodyWrap.clientWidth;
-      this.chartBodyWrap.scrollLeft  = Math.round(ratio * newScrollMax);
+      this.chartBodyWrap.scrollLeft = Math.round(ratio * newScrollMax);
       this.chartHeaderWrap.scrollLeft = this.chartBodyWrap.scrollLeft;
     }
   }
@@ -472,13 +472,13 @@ export class Visual implements IVisual {
       this.viewModel = parseDataView(dataView, this.host);
       if (!this.viewModel) { this.renderEmptyState(); this.events.renderingFinished(options); return; }
 
-      this.vpWidth  = options.viewport.width;
+      this.vpWidth = options.viewport.width;
       this.vpHeight = options.viewport.height;
 
       // Auto-fit only on first load — start at fit-to-width (zoomIdx 0)
       if (this.firstLoad) {
         this.firstLoad = false;
-        this.zoomIdx   = 0;
+        this.zoomIdx = 0;
       }
 
       // Recalculate pxPerDay when in fit-to-width mode (responds to viewport resize)
@@ -551,27 +551,27 @@ export class Visual implements IVisual {
   // ── Position the "Hoje" pill (HTML element, always pixel-perfect) ─────────
   private updateTodayPillPosition(): void {
     if (!this.viewModel) { this.todayPill.style.display = "none"; return; }
-    const s      = this.fmtSettings;
-    const wbsW   = (this.fmtSettings.layout.showWbs.value && this.showWbs)
+    const s = this.fmtSettings;
+    const wbsW = (this.fmtSettings.layout.showWbs.value && this.showWbs)
       ? s.layout.wbsColumnWidth.value : 0;
     const labelW = this.sidebarLabelW;
     const sidebarW = wbsW + labelW;
 
     const { minDate, maxDate } = this.viewModel;
-    const _n    = new Date();
+    const _n = new Date();
     const today = new Date(_n.getFullYear(), _n.getMonth(), _n.getDate());
 
-    const daySpan  = Math.max(Math.ceil((maxDate.getTime() - minDate.getTime()) / 86400000), 1);
+    const daySpan = Math.max(Math.ceil((maxDate.getTime() - minDate.getTime()) / 86400000), 1);
     const contentW = Math.round(daySpan * this.pxPerDay);
-    const wrapW    = Math.max(this.vpWidth - sidebarW, 60);
-    const chartW   = Math.max(contentW, wrapW);
+    const wrapW = Math.max(this.vpWidth - sidebarW, 60);
+    const chartW = Math.max(contentW, wrapW);
 
-    const xScale   = d3.scaleTime().domain([minDate, maxDate]).range([0, contentW]);
-    const tx       = xScale(today);
+    const xScale = d3.scaleTime().domain([minDate, maxDate]).range([0, contentW]);
+    const tx = xScale(today);
 
     // Position = sidebar + tx - scrollLeft
     const scrollLeft = this.chartBodyWrap.scrollLeft;
-    const left       = sidebarW + tx - scrollLeft;
+    const left = sidebarW + tx - scrollLeft;
 
     // Hide if scrolled out of visible area
     const pillW = 36;
@@ -580,9 +580,9 @@ export class Visual implements IVisual {
       return;
     }
 
-    this.todayPill.style.display  = "block";
-    this.todayPill.style.left     = `${Math.round(left - pillW / 2)}px`;
-    this.todayPill.style.top      = `4px`;
+    this.todayPill.style.display = "block";
+    this.todayPill.style.left = `${Math.round(left - pillW / 2)}px`;
+    this.todayPill.style.top = `4px`;
 
     // Update the dashed line position too — rendered as bodySvg line
     // (already drawn correctly by xScale; only pill needs repositioning)
@@ -601,47 +601,47 @@ export class Visual implements IVisual {
     }
 
     const { tasks, minDate, maxDate } = this.viewModel;
-    const s            = this.fmtSettings;
-    const rowH         = s.layout.rowHeight.value;
-    const showDeps          = s.layout.showDependencies.value;
-    const showToday         = s.layout.showToday.value;
-    const showBaseline      = s.layout.showBaseline.value;
-    const showStatusLabels  = s.layout.showStatusLabels.value;
-    const showStatusBar     = s.layout.showStatusBar.value;
-    const showWbsSetting    = s.layout.showWbs.value;
+    const s = this.fmtSettings;
+    const rowH = s.layout.rowHeight.value;
+    const showDeps = s.layout.showDependencies.value;
+    const showToday = s.layout.showToday.value;
+    const showBaseline = s.layout.showBaseline.value;
+    const showStatusLabels = s.layout.showStatusLabels.value;
+    const showStatusBar = s.layout.showStatusBar.value;
+    const showWbsSetting = s.layout.showWbs.value;
     // WBS: panel toggle AND in-chart button must both be on
-    const wbsActive    = showWbsSetting && this.showWbs;
-    const wbsW         = wbsActive ? s.layout.wbsColumnWidth.value : 0;
-    const labelW       = this.sidebarLabelW;
-    const cPlanned     = s.colors.plannedBarColor.value.value;
-    const cSummary     = s.colors.summaryBarColor.value.value;
-    const cBaseline    = s.colors.baselineBarColor.value.value;
-    const cProgress    = s.colors.progressColor.value.value;
-    const cToday       = s.colors.todayLineColor.value.value;
-    const cMilestone   = s.colors.milestoneColor.value.value;
-    const cMsBaseline  = s.colors.milestoneBaselineColor.value.value;
-    const cDepLine     = s.colors.dependencyLineColor.value.value;
+    const wbsActive = showWbsSetting && this.showWbs;
+    const wbsW = wbsActive ? s.layout.wbsColumnWidth.value : 0;
+    const labelW = this.sidebarLabelW;
+    const cPlanned = s.colors.plannedBarColor.value.value;
+    const cSummary = s.colors.summaryBarColor.value.value;
+    const cBaseline = s.colors.baselineBarColor.value.value;
+    const cProgress = s.colors.progressColor.value.value;
+    const cToday = s.colors.todayLineColor.value.value;
+    const cMilestone = s.colors.milestoneColor.value.value;
+    const cMsBaseline = s.colors.milestoneBaselineColor.value.value;
+    const cDepLine = s.colors.dependencyLineColor.value.value;
 
     // ── DIAGNOSTIC — remove after debugging ──
     console.log("[GANTT-COLOR] dependencyLineColor:", cDepLine, "| raw:", s.colors.dependencyLineColor);
 
     const visibleTasks = tasks.filter(t => t.isVisible);
-    const daySpan      = Math.max(Math.ceil((maxDate.getTime() - minDate.getTime()) / 86400000), 1);
-    const sidebarW     = wbsW + labelW;
-    const wrapW        = Math.max(vpWidth - sidebarW, 60);
+    const daySpan = Math.max(Math.ceil((maxDate.getTime() - minDate.getTime()) / 86400000), 1);
+    const sidebarW = wbsW + labelW;
+    const wrapW = Math.max(vpWidth - sidebarW, 60);
     // contentW: exact pixels based on pxPerDay — xScale ALWAYS uses this, never stretched
-    const contentW     = Math.round(daySpan * this.pxPerDay);
+    const contentW = Math.round(daySpan * this.pxPerDay);
     // svgW: in fit mode (zoomIdx 0) use contentW to avoid horizontal scroll;
     // in other modes, at least wrapW so background fills the visible area
-    const chartW       = this.zoomIdx === 0 ? contentW : Math.max(contentW, wrapW);
-    const totalH       = visibleTasks.length * rowH;
-    const bodyH        = vpHeight - this.HEADER_H;
+    const chartW = this.zoomIdx === 0 ? contentW : Math.max(contentW, wrapW);
+    const totalH = visibleTasks.length * rowH;
+    const bodyH = vpHeight - this.HEADER_H;
 
     const zl = pickZoom(this.pxPerDay);
     this.updateZoomToggle();
 
     // xScale maps to contentW — bars are always proportional to pxPerDay
-    const xScale   = d3.scaleTime().domain([minDate, maxDate]).range([0, contentW]);
+    const xScale = d3.scaleTime().domain([minDate, maxDate]).range([0, contentW]);
     const topTicks = fullTicks(xScale, zl.topInterval);
     const botTicks = fullTicks(xScale, zl.bottomInterval);
 
@@ -699,10 +699,10 @@ export class Visual implements IVisual {
     tasks.forEach(task => {
       const row = document.createElement("div");
       row.className = "sidebar-row";
-      if (task.isSummary)  row.classList.add("is-summary");
+      if (task.isSummary) row.classList.add("is-summary");
       if (!task.isVisible) row.classList.add("is-hidden");
       row.style.height = `${rowH}px`;
-      row.dataset.id   = task.id;
+      row.dataset.id = task.id;
 
       if (wbsActive) {
         const wbsCell = document.createElement("div");
@@ -755,11 +755,11 @@ export class Visual implements IVisual {
       // Status badge — only for non-summary, non-milestone tasks
       if (showStatusLabels && !task.isSummary && !task.isMilestone) {
         const STATUS_DEF: Record<string, { cls: string; label: string }> = {
-          adiantado:    { cls: "early",      label: "Adiantado" },
-          concluida:    { cls: "done",       label: "Concluída" },
-          atrasado:     { cls: "late",       label: "Atrasado" },
+          adiantado: { cls: "early", label: "Adiantado" },
+          concluida: { cls: "done", label: "Concluída" },
+          atrasado: { cls: "late", label: "Atrasado" },
           em_andamento: { cls: "inprogress", label: "Andamento" },
-          no_prazo:     { cls: "ontime",     label: "No prazo" },
+          no_prazo: { cls: "ontime", label: "No prazo" },
         };
         const st = this.getTaskStatus(task);
         const def = STATUS_DEF[st];
@@ -822,8 +822,8 @@ export class Visual implements IVisual {
 
     // Top row: render each cell between consecutive ticks
     topTicks.forEach((d, i) => {
-      const x1    = xScale(d);
-      const x2    = i + 1 < topTicks.length
+      const x1 = xScale(d);
+      const x2 = i + 1 < topTicks.length
         ? xScale(topTicks[i + 1])
         : Math.min(xScale(zl.topInterval.offset(d, 1)), chartW);
       const cellW = x2 - x1;
@@ -866,18 +866,18 @@ export class Visual implements IVisual {
 
     // Bottom row
     const isDayView = this.pxPerDay >= 12;
-    const today     = new Date();
+    const today = new Date();
 
     botTicks.forEach((d, i) => {
-      const x1    = xScale(d);
-      const x2    = i + 1 < botTicks.length
+      const x1 = xScale(d);
+      const x2 = i + 1 < botTicks.length
         ? xScale(botTicks[i + 1])
         : Math.min(xScale(zl.bottomInterval.offset(d, 1)), chartW);
       const cellW = Math.max(x2 - x1, 0);
-      const isWE  = isDayView && (d.getDay() === 0 || d.getDay() === 6);
+      const isWE = isDayView && (d.getDay() === 0 || d.getDay() === 6);
       // Suppress label when today falls in this cell (arrow/pill already marks it)
       const _t = new Date();
-      const todayLocal  = new Date(_t.getFullYear(), _t.getMonth(), _t.getDate());
+      const todayLocal = new Date(_t.getFullYear(), _t.getMonth(), _t.getDate());
       const todayInCell = showToday
         && todayLocal >= minDate && todayLocal <= maxDate
         && todayLocal >= d
@@ -896,7 +896,7 @@ export class Visual implements IVisual {
       }
 
       const label = zl.bottomFmt(d, i, botTicks);
-      const minW  = label.length * 5.5;
+      const minW = label.length * 5.5;
       if (cellW >= minW && !todayInCell) {
         this.headerSvg.append("text")
           .attr("x", x1 + cellW / 2)
@@ -945,9 +945,9 @@ export class Visual implements IVisual {
     botTicks.forEach(d => {
       const isWE = isDayView && (d.getDay() === 0 || d.getDay() === 6);
       if (isWE) {
-        const x1   = xScale(d);
+        const x1 = xScale(d);
         const next = new Date(d); next.setDate(next.getDate() + 1);
-        const wid  = Math.max(xScale(next) - x1, 0);
+        const wid = Math.max(xScale(next) - x1, 0);
         this.bodySvg.append("rect")
           .attr("x", x1).attr("y", 0).attr("width", wid).attr("height", fullH)
           .attr("fill", "#f1f5f9").attr("opacity", 0.6);
@@ -968,7 +968,7 @@ export class Visual implements IVisual {
 
     // ── Today line + header marker ───────────────────────────────────────────
     if (showToday) {
-      const _now  = new Date();
+      const _now = new Date();
       // Normalize to local midnight — same as all task dates — so xScale position is exact
       const today = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate(), 0, 0, 0, 0);
       // Always render (domain now guaranteed to include today from dataParser)
@@ -1023,12 +1023,12 @@ export class Visual implements IVisual {
       .classed("bars", true).attr("clip-path", "url(#bars-clip)");
 
     visibleTasks.forEach((task, i) => {
-      const rowY  = i * rowH;
+      const rowY = i * rowH;
       const barCY = rowY + rowH / 2;
-      const barH  = task.isSummary ? Math.round(rowH * 0.30) : Math.round(rowH * 0.44);
+      const barH = task.isSummary ? Math.round(rowH * 0.30) : Math.round(rowH * 0.44);
       const baseH = Math.max(Math.round(rowH * 0.14), 4);
-      const barY  = barCY - barH / 2;
-      const x1    = xScale(task.plannedStart);
+      const barY = barCY - barH / 2;
+      const x1 = xScale(task.plannedStart);
       // Always derive width from xScale so position + width use the same mapping.
       // Add 1 day to end → single-day tasks get exactly 1 cell width.
       // +1 day using local-time constructor — safe across DST boundaries
@@ -1037,7 +1037,7 @@ export class Visual implements IVisual {
         task.plannedEnd.getMonth(),
         task.plannedEnd.getDate() + 1
       );
-      const barW  = Math.max(xScale(endPlus1) - x1, 4);
+      const barW = Math.max(xScale(endPlus1) - x1, 4);
 
       const tg = barsG.append("g")
         .classed("task-group", true).attr("data-id", task.id)
@@ -1056,7 +1056,7 @@ export class Visual implements IVisual {
 
       if (task.isMilestone) {
         // ── MILESTONE: diamond centered on plannedStart ──────────────────
-        const ms   = xScale(task.plannedStart);
+        const ms = xScale(task.plannedStart);
 
         // Fixed ratio of rowH — never grows with zoom
         const half = Math.round(rowH * 0.28);
@@ -1071,7 +1071,7 @@ export class Visual implements IVisual {
 
         // Baseline: small dot directly below diamond bottom tip
         if (showBaseline && task.baselineStart) {
-          const bx   = xScale(task.baselineStart);
+          const bx = xScale(task.baselineStart);
           const dotR = Math.max(Math.round(rowH * 0.08), 3);
           const dotY = barCY + half + 2 + dotR;  // just below bottom tip
 
@@ -1156,8 +1156,8 @@ export class Visual implements IVisual {
             task.baselineEnd!.getMonth(),
             task.baselineEnd!.getDate() + 1
           );
-          const bW  = Math.max(xScale(bEndPlus1) - bx1, 4);
-          const bY  = barY + barH + 3;
+          const bW = Math.max(xScale(bEndPlus1) - bx1, 4);
+          const bY = barY + barH + 3;
           tg.append("rect")
             .attr("x", bx1).attr("y", bY).attr("width", bW).attr("height", baseH)
             .attr("rx", 2).attr("fill", cBaseline).attr("opacity", 0.55);
@@ -1181,10 +1181,10 @@ export class Visual implements IVisual {
     // Build lookup with multiple keys so deps match by taskId, wbs, or name
     const idxMap = new Map<string, number>();
     tasks.forEach((t, i) => {
-      if (t.id)     idxMap.set(t.id, i);
+      if (t.id) idxMap.set(t.id, i);
       if (t.taskId && !idxMap.has(t.taskId)) idxMap.set(t.taskId, i);
-      if (t.wbs    && !idxMap.has(t.wbs))    idxMap.set(t.wbs, i);
-      if (t.name   && !idxMap.has(t.name))   idxMap.set(t.name, i);
+      if (t.wbs && !idxMap.has(t.wbs)) idxMap.set(t.wbs, i);
+      if (t.name && !idxMap.has(t.name)) idxMap.set(t.name, i);
     });
 
     // ── DIAGNOSTIC LOG — remove after debugging ──
@@ -1215,12 +1215,12 @@ export class Visual implements IVisual {
         const x1 = xScale(fromEndPlus1);
         const y1 = fromIdx * rowH + rowH / 2;
         const x2 = xScale(task.plannedStart);
-        const y2 = toIdx   * rowH + rowH / 2;
+        const y2 = toIdx * rowH + rowH / 2;
 
         // Elbow X: horizontal exit then vertical drop
         const elbowX = Math.max(x1 + 10, x2 - 12);
         const dy = y2 - y1;
-        const r  = Math.min(R, Math.abs(dy) / 2, Math.abs(elbowX - x1) / 2, Math.abs(x2 - elbowX) / 2);
+        const r = Math.min(R, Math.abs(dy) / 2, Math.abs(elbowX - x1) / 2, Math.abs(x2 - elbowX) / 2);
 
         let d: string;
         if (Math.abs(dy) < 1) {
@@ -1255,13 +1255,13 @@ export class Visual implements IVisual {
       t.isHighlighted = has ? sel.some(id => id.equals(t.selectionId)) : undefined;
     });
     this.bodySvg.selectAll<SVGGElement, unknown>(".task-group").each((_, i, nodes) => {
-      const el  = nodes[i] as SVGGElement;
+      const el = nodes[i] as SVGGElement;
       const dim = this.viewModel?.tasks.find(t => t.id === el.getAttribute("data-id"))?.isHighlighted === false;
       d3.select(el).attr("opacity", dim ? 0.2 : 1);
     });
     // Update row background fills to reflect selection state
     this.bodySvg.selectAll<SVGRectElement, unknown>(".row-bg").each((_, i, nodes) => {
-      const el   = nodes[i] as SVGRectElement;
+      const el = nodes[i] as SVGRectElement;
       const task = this.viewModel?.tasks.find(t => t.id === el.getAttribute("data-id"));
       if (!task) return;
       let fill: string;
@@ -1278,7 +1278,7 @@ export class Visual implements IVisual {
     });
     this.sideBody.querySelectorAll<HTMLElement>(".sidebar-row").forEach(row => {
       const t = this.viewModel?.tasks.find(x => x.id === row.dataset.id);
-      row.classList.toggle("is-dimmed",   t?.isHighlighted === false);
+      row.classList.toggle("is-dimmed", t?.isHighlighted === false);
       row.classList.toggle("is-selected", t?.isHighlighted === true);
     });
   }
@@ -1323,11 +1323,11 @@ export class Visual implements IVisual {
     // Status: compare actual progress vs expected progress based on today
     const statusLabel = (): string => {
       const STATUS_MAP: Record<string, { cls: string; label: string }> = {
-        adiantado:    { cls: "early",      label: "Adiantado" },
-        concluida:    { cls: "ontime",     label: "Concluída" },
-        atrasado:     { cls: "late",       label: "Atrasado" },
+        adiantado: { cls: "early", label: "Adiantado" },
+        concluida: { cls: "ontime", label: "Concluída" },
+        atrasado: { cls: "late", label: "Atrasado" },
         em_andamento: { cls: "inprogress", label: "Em andamento" },
-        no_prazo:     { cls: "ontime",     label: "No prazo" },
+        no_prazo: { cls: "ontime", label: "No prazo" },
       };
       const s = this.getTaskStatus(task);
       const m = STATUS_MAP[s] || STATUS_MAP["no_prazo"];
@@ -1358,9 +1358,9 @@ export class Visual implements IVisual {
 
     const rect = this.root.getBoundingClientRect();
     let tx = ev.clientX - rect.left + 14;
-    let ty = ev.clientY - rect.top  + 14;
-    if (tx + 300 > rect.width)  tx = ev.clientX - rect.left - 310;
-    if (ty + 260 > rect.height) ty = ev.clientY - rect.top  - 270;
+    let ty = ev.clientY - rect.top + 14;
+    if (tx + 300 > rect.width) tx = ev.clientX - rect.left - 310;
+    if (ty + 260 > rect.height) ty = ev.clientY - rect.top - 270;
     this.tooltip.style.cssText = `left:${tx}px;top:${ty}px;display:block;`;
   }
 
