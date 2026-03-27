@@ -420,11 +420,34 @@ export class Visual implements IVisual {
   private scrollToTask(task: GanttTask): void {
     if (!this.viewModel) return;
     const { minDate, maxDate } = this.viewModel;
+    const s = this.fmtSettings;
+    const rowH = s.layout.rowHeight.value;
+
+    // ── Vertical scroll: bring the task row into view ──
+    const visibleTasks = this.viewModel.tasks.filter(t => t.isVisible);
+    const taskVisIdx = visibleTasks.indexOf(task);
+    if (taskVisIdx >= 0) {
+      const rowTop = taskVisIdx * rowH;
+      const rowBot = rowTop + rowH;
+      const viewTop = this.chartBodyWrap.scrollTop;
+      const viewBot = viewTop + this.chartBodyWrap.clientHeight;
+
+      // Only scroll vertically if the row is not already fully visible
+      if (rowTop < viewTop || rowBot > viewBot) {
+        // Center the row vertically in the viewport
+        const targetY = Math.max(0, rowTop - (this.chartBodyWrap.clientHeight - rowH) / 2);
+        this.chartBodyWrap.scrollTo({ top: targetY, behavior: "smooth" });
+      }
+    }
+
+    // ── Horizontal scroll: center on task bar midpoint ──
+    // Skip horizontal scroll in fit-to-width mode (overflow-x is hidden)
+    if (this.zoomIdx === 0) return;
+
     const daySpan = Math.max(Math.ceil((maxDate.getTime() - minDate.getTime()) / 86400000), 1);
     const chartW = Math.round(daySpan * this.pxPerDay);
     const wrapW = this.chartBodyWrap.clientWidth;
 
-    // Center horizontally on the task bar midpoint
     const taskMid = (task.plannedStart.getTime() + task.plannedEnd.getTime()) / 2;
     const taskX = Math.round(((taskMid - minDate.getTime()) / 86400000) * this.pxPerDay);
     const targetX = Math.max(0, Math.min(taskX - wrapW / 2, chartW - wrapW));
@@ -886,7 +909,7 @@ export class Visual implements IVisual {
       this.headerSvg.append("rect")
         .attr("x", x1).attr("y", this.TOP_ROW_H)
         .attr("width", cellW).attr("height", this.BOT_ROW_H)
-        .attr("fill", isWE ? "#dde3ec" : (i % 2 === 0 ? "#f3f4f6" : "#ebedf0"));
+        .attr("fill", isWE ? "#ebeef3" : (i % 2 === 0 ? "#f3f4f6" : "#ebedf0"));
 
       if (i > 0) {
         this.headerSvg.append("line")
@@ -902,7 +925,7 @@ export class Visual implements IVisual {
           .attr("x", x1 + cellW / 2)
           .attr("y", this.TOP_ROW_H + this.BOT_ROW_H / 2 + 4)
           .attr("text-anchor", "middle")
-          .attr("fill", isWE ? "#94a3b8" : "#4b5563")
+          .attr("fill", isWE ? "#a0aec0" : "#4b5563")
           .attr("font-size", "10px").attr("font-weight", "600")
           .attr("font-family", "Segoe UI, sans-serif")
           .text(label);
@@ -924,13 +947,27 @@ export class Visual implements IVisual {
       .attr("markerWidth", 6).attr("markerHeight", 6).attr("orient", "auto")
       .append("path").attr("d", "M0,1 L7,4 L0,7 z").attr("fill", cDepLine);
 
-    // Row backgrounds
+    // Row backgrounds — interactive: click selects, dblclick scrolls to bar
     visibleTasks.forEach((task, i) => {
       this.bodySvg.append("rect")
         .classed("row-bg", true)
         .attr("data-id", task.id)
         .attr("x", 0).attr("y", i * rowH).attr("width", chartW).attr("height", rowH)
-        .attr("fill", task.isSummary ? "#e6f7f6" : (i % 2 === 0 ? "#fafbfc" : "#fff"));
+        .attr("fill", task.isSummary ? "#e6f7f6" : (i % 2 === 0 ? "#fafbfc" : "#fff"))
+        .style("cursor", "pointer")
+        .on("click", (ev: MouseEvent) => {
+          ev.stopPropagation();
+          this.selectionManager.select(task.selectionId, ev.ctrlKey || ev.metaKey)
+            .then(() => this.syncHighlight());
+        })
+        .on("dblclick", (ev: MouseEvent) => {
+          ev.stopPropagation();
+          this.scrollToTask(task);
+        })
+        .on("contextmenu", (ev: MouseEvent) => {
+          ev.preventDefault();
+          this.selectionManager.showContextMenu(task.selectionId, { x: ev.clientX, y: ev.clientY });
+        });
     });
 
     // Vertical grid — top (stronger)
@@ -950,7 +987,7 @@ export class Visual implements IVisual {
         const wid = Math.max(xScale(next) - x1, 0);
         this.bodySvg.append("rect")
           .attr("x", x1).attr("y", 0).attr("width", wid).attr("height", fullH)
-          .attr("fill", "#f1f5f9").attr("opacity", 0.6);
+          .attr("fill", "#f1f5f9").attr("opacity", 0.35);
       }
       this.bodySvg.append("line")
         .attr("x1", xScale(d)).attr("x2", xScale(d))
@@ -1172,6 +1209,12 @@ export class Visual implements IVisual {
 
     // ── Sync header scroll with body after re-render (fixes misalignment on zoom) ──
     this.chartHeaderWrap.scrollLeft = this.chartBodyWrap.scrollLeft;
+
+    // ── Re-apply selection highlight after full re-render ──
+    // Power BI calls update() (→ render()) after selection changes,
+    // which rebuilds all SVG elements and wipes any highlight styling.
+    // Re-applying here ensures Gantt bars + row backgrounds stay in sync.
+    this.syncHighlight();
   }
 
   // ── Dependencies ─────────────────────────────────────────────────────────
