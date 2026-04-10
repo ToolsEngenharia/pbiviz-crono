@@ -159,7 +159,7 @@ export class Visual implements IVisual {
 
     this.root = options.element;
     this.root.innerHTML = "";
-    this.root.style.cssText = "position:relative;overflow:hidden;width:100%;height:100%;box-sizing:border-box;";
+    this.root.style.cssText = "position:relative;width:100%;height:100%;box-sizing:border-box;";
 
     // ── Outer flex row ───────────────────────────────────────────────────────
     const wrapper = document.createElement("div");
@@ -385,9 +385,18 @@ export class Visual implements IVisual {
     });
 
     // ── Tooltip ───────────────────────────────────────────────────────────────
+    // Anexado ao document.body com position:fixed para escapar qualquer
+    // overflow:hidden no iframe do Power BI.
     this.tooltip = document.createElement("div");
     this.tooltip.className = "gantt-tooltip";
-    this.root.appendChild(this.tooltip);
+    this.tooltip.style.display = "none";
+    document.body.appendChild(this.tooltip);
+
+    // Atualiza posição do tooltip a cada movimento do mouse (no document inteiro)
+    document.addEventListener("mousemove", (ev: MouseEvent) => {
+      if (this.tooltip.style.display === "none") return;
+      this._positionTooltip(ev);
+    });
 
     // "Hoje" pill — HTML element, positioned absolutely relative to root
     // Updated on every render + scroll so it always aligns with bodySvg
@@ -1089,6 +1098,7 @@ export class Visual implements IVisual {
           this.selectionManager.showContextMenu(task.selectionId, { x: ev.clientX, y: ev.clientY });
         })
         .on("mouseenter", (ev: MouseEvent) => this.showTooltip(ev, task))
+        .on("mousemove",  (ev: MouseEvent) => this._positionTooltip(ev))
         .on("mouseleave", () => { this.tooltip.style.display = "none"; });
 
       if (task.isMilestone) {
@@ -1330,7 +1340,6 @@ export class Visual implements IVisual {
   private showTooltip(ev: MouseEvent, task: GanttTask): void {
     const fmt = d3.timeFormat("%d/%m/%y");
 
-    // Builds a date block: Planejado + Baseline with pipe + delta (planned − baseline)
     const dateBlock = (
       label: string,
       planned: Date,
@@ -1341,7 +1350,6 @@ export class Visual implements IVisual {
         : null;
       const cls = d === null ? "" : d === 0 ? "ontime" : d > 0 ? "late" : "early";
       const val = d === null ? "" : d === 0 ? "0" : d > 0 ? `+${d}` : `${d}`;
-
       return `
         <div class="tt-section-label">${label}</div>
         <div class="tt-date-group">
@@ -1363,14 +1371,13 @@ export class Visual implements IVisual {
         </div>`;
     };
 
-    // Status: compare actual progress vs expected progress based on today
     const statusLabel = (): string => {
       const STATUS_MAP: Record<string, { cls: string; label: string }> = {
-        adiantado: { cls: "early", label: "Adiantado" },
-        concluida: { cls: "ontime", label: "Concluída" },
-        atrasado: { cls: "late", label: "Atrasado" },
+        adiantado:    { cls: "early",      label: "Adiantado"    },
+        concluida:    { cls: "ontime",     label: "Concluída"    },
+        atrasado:     { cls: "late",       label: "Atrasado"     },
         em_andamento: { cls: "inprogress", label: "Em andamento" },
-        no_prazo: { cls: "ontime", label: "No prazo" },
+        no_prazo:     { cls: "ontime",     label: "No prazo"     },
       };
       const s = this.getTaskStatus(task);
       const m = STATUS_MAP[s] || STATUS_MAP["no_prazo"];
@@ -1389,8 +1396,8 @@ export class Visual implements IVisual {
         <div class="tt-title">${task.name}</div>
         ${task.wbs ? `<div class="tt-wbs">WBS: ${task.wbs}</div>` : ""}
         <hr class="tt-divider"/>
-        ${dateBlock("Início", task.plannedStart, task.baselineStart)}
-        ${dateBlock("Término", task.plannedEnd, task.baselineEnd)}
+        ${dateBlock("Início",   task.plannedStart, task.baselineStart)}
+        ${dateBlock("Término",  task.plannedEnd,   task.baselineEnd)}
         <hr class="tt-divider"/>
         <div class="tt-progress-row">
           <span class="tt-progress-label">Progresso: <b>${Math.round(task.progress)}%</b></span>
@@ -1399,12 +1406,30 @@ export class Visual implements IVisual {
         <div class="tt-bar-bg"><div class="tt-bar-fill" style="width:${task.progress}%"></div></div>`;
     }
 
-    const rect = this.root.getBoundingClientRect();
-    let tx = ev.clientX - rect.left + 14;
-    let ty = ev.clientY - rect.top + 14;
-    if (tx + 300 > rect.width) tx = ev.clientX - rect.left - 310;
-    if (ty + 260 > rect.height) ty = ev.clientY - rect.top - 270;
-    this.tooltip.style.cssText = `left:${tx}px;top:${ty}px;display:block;`;
+    // Mostra e posiciona
+    this.tooltip.style.display = "block";
+    this._positionTooltip(ev);
+  }
+
+  // Posiciona o tooltip usando coordenadas de viewport (position:fixed no CSS).
+  // Espelha horizontalmente/verticalmente quando estiver próximo das bordas da tela.
+  private _positionTooltip(ev: MouseEvent): void {
+    const ttW = this.tooltip.offsetWidth  || 260;
+    const ttH = this.tooltip.offsetHeight || 220;
+    const offset = 16;
+    const vpW = window.innerWidth;
+    const vpH = window.innerHeight;
+
+    let tx = ev.clientX + offset;
+    let ty = ev.clientY + offset;
+    if (tx + ttW > vpW) tx = ev.clientX - ttW - offset;
+    if (ty + ttH > vpH) ty = ev.clientY - ttH - offset;
+    // Garante que não saia pela esquerda/topo
+    tx = Math.max(4, tx);
+    ty = Math.max(4, ty);
+
+    this.tooltip.style.left = `${tx}px`;
+    this.tooltip.style.top  = `${ty}px`;
   }
 
   private renderEmptyState(): void {
