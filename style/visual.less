@@ -212,8 +212,10 @@
 }
 
 // ── Tooltip ───────────────────────────────────────────────────────────────────
+// position:fixed + document.body: escapa overflow:hidden de todos os ancestrais,
+// incluindo o container do iframe do Power BI.
 .gantt-tooltip {
-  position: absolute;
+  position: fixed;
   background: #1f2937;
   color: #f9fafb;
   border-radius: 10px;
