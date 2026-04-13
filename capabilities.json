@@ -1,5 +1,6 @@
 {
   "dataRoles": [
+    { "name": "groupName",    "kind": "GroupingOrMeasure", "displayName": "Grupo" },
     { "name": "taskName",     "kind": "GroupingOrMeasure", "displayName": "Nome da Tarefa" },
     { "name": "taskId",       "kind": "GroupingOrMeasure", "displayName": "ID da Tarefa" },
     { "name": "wbs",          "kind": "GroupingOrMeasure", "displayName": "WBS" },
@@ -17,6 +18,7 @@
       "table": {
         "rows": {
           "select": [
+            { "for": { "in": "groupName" } },
             { "for": { "in": "taskName" } },
             { "for": { "in": "taskId" } },
             { "for": { "in": "wbs" } },

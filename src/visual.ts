@@ -103,6 +103,7 @@ export class Visual implements IVisual {
 
   private viewModel: GanttViewModel | null = null;
   private collapsed = new Set<string>();
+  private collapsedGroups = new Set<string>();
   private statusFilter: string | null = null;  // null = show all
   private filterBtns: HTMLButtonElement[] = [];
 
@@ -549,7 +550,21 @@ export class Visual implements IVisual {
     const tasks = this.viewModel.tasks;
     tasks.forEach(t => { t.isVisible = true; });
 
-    // 1) Collapse
+    // 0) Group collapse — hide all tasks belonging to a collapsed group
+    if (this.collapsedGroups.size > 0) {
+      let currentGroup = "";
+      for (const t of tasks) {
+        if (t.isGroupHeader) {
+          currentGroup = t.group;
+          continue;
+        }
+        if (currentGroup && this.collapsedGroups.has(currentGroup)) {
+          t.isVisible = false;
+        }
+      }
+    }
+
+    // 1) Collapse (WBS hierarchy)
     for (let i = 0; i < tasks.length; i++) {
       if (!this.collapsed.has(tasks[i].id)) continue;
       const pl = tasks[i].outlineLevel;
@@ -564,7 +579,7 @@ export class Visual implements IVisual {
       const filter = this.statusFilter;
       // First pass: mark all non-matching tasks (including summaries)
       tasks.forEach(t => {
-        if (!t.isVisible) return;
+        if (!t.isVisible || t.isGroupHeader) return;
         if (this.getTaskStatus(t) !== filter) t.isVisible = false;
       });
       // Second pass (bottom-up): restore summaries that have at least one visible descendant
@@ -576,6 +591,17 @@ export class Visual implements IVisual {
           if (tasks[j].outlineLevel <= pl) break;
           if (tasks[j].isVisible) { t.isVisible = true; break; }
         }
+      }
+      // Third pass: restore group headers that have at least one visible child
+      for (let i = 0; i < tasks.length; i++) {
+        const t = tasks[i];
+        if (!t.isGroupHeader) continue;
+        let hasVisible = false;
+        for (let j = i + 1; j < tasks.length; j++) {
+          if (tasks[j].isGroupHeader) break;
+          if (tasks[j].isVisible) { hasVisible = true; break; }
+        }
+        t.isVisible = hasVisible;
       }
     }
   }
@@ -626,13 +652,7 @@ export class Visual implements IVisual {
   private render(vpWidth: number, vpHeight: number): void {
     if (!this.viewModel) return;
 
-    // Recalculate pxPerDay in fit-to-width mode (zoomIdx 0) so sidebar
-    // resize, WBS toggle, and viewport changes all keep content fitted
-    if (this.zoomIdx === 0) {
-      this.pxPerDay = this.computeFitPxPerDay();
-    }
-
-    const { tasks, minDate, maxDate } = this.viewModel;
+    const { tasks } = this.viewModel;
     const s = this.fmtSettings;
     const rowH = s.layout.rowHeight.value;
     const showDeps = s.layout.showDependencies.value;
@@ -641,6 +661,59 @@ export class Visual implements IVisual {
     const showStatusLabels = s.layout.showStatusLabels.value;
     const showStatusBar = s.layout.showStatusBar.value;
     const showWbsSetting = s.layout.showWbs.value;
+
+    // ── Recalculate date domain based on showBaseline + visibility ─────────
+    // Only visible tasks contribute to the domain so collapsed groups,
+    // filtered tasks, etc. don't force the timeline to show empty months.
+    // When baseline is hidden, exclude baseline dates as well.
+    const domainTasks = tasks.filter(t => t.isVisible && !t.isGroupHeader);
+    const activeDates = domainTasks.flatMap(t => {
+      const dates: Date[] = [t.plannedStart, t.plannedEnd];
+      if (showBaseline) {
+        if (t.baselineStart) dates.push(t.baselineStart);
+        if (t.baselineEnd)   dates.push(t.baselineEnd);
+      }
+      return dates;
+    }).filter(Boolean) as Date[];
+
+    let minDate: Date, maxDate: Date;
+    if (activeDates.length > 0) {
+      minDate = new Date(Math.min(...activeDates.map(d => d.getTime())));
+      maxDate = new Date(Math.max(...activeDates.map(d => d.getTime())));
+      // Padding proportional to zoom level so the last period always has room
+      // zoomIdx 0 = fit/Ano (semester view → +2 months), 1 = Mês (+1 month), 2 = Dia (+7 days)
+      if (this.zoomIdx <= 0) {
+        // Fit / Ano: pad by ~2 months
+        minDate = new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate() - 15);
+        maxDate = new Date(maxDate.getFullYear(), maxDate.getMonth() + 2, maxDate.getDate());
+      } else if (this.zoomIdx === 1) {
+        // Mês: pad so the last month cell renders fully
+        minDate = new Date(minDate.getFullYear(), minDate.getMonth(), 1);           // snap to 1st of month
+        maxDate = new Date(maxDate.getFullYear(), maxDate.getMonth() + 2, 1);       // 1st of month+2
+      } else {
+        // Dia: small day padding
+        minDate = new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate() - 3);
+        maxDate = new Date(maxDate.getFullYear(), maxDate.getMonth(), maxDate.getDate() + 7);
+      }
+    } else {
+      minDate = this.viewModel.minDate;
+      maxDate = this.viewModel.maxDate;
+    }
+
+    // Always include today in the domain
+    const _todayNow = new Date();
+    const todayNorm = new Date(_todayNow.getFullYear(), _todayNow.getMonth(), _todayNow.getDate());
+    if (todayNorm < minDate) minDate = new Date(todayNorm.getFullYear(), todayNorm.getMonth(), todayNorm.getDate() - 2);
+    if (todayNorm > maxDate) maxDate = new Date(todayNorm.getFullYear(), todayNorm.getMonth(), todayNorm.getDate() + 2);
+
+    // Update viewModel so other methods (scrollToToday, todayPill, fitPxPerDay) use correct domain
+    this.viewModel.minDate = minDate;
+    this.viewModel.maxDate = maxDate;
+
+    // Recalculate pxPerDay in fit-to-width mode AFTER domain is updated
+    if (this.zoomIdx === 0) {
+      this.pxPerDay = this.computeFitPxPerDay();
+    }
     // WBS: panel toggle AND in-chart button must both be on
     const wbsActive = showWbsSetting && this.showWbs;
     const wbsW = wbsActive ? s.layout.wbsColumnWidth.value : 0;
@@ -661,8 +734,14 @@ export class Visual implements IVisual {
     const daySpan = Math.max(Math.ceil((maxDate.getTime() - minDate.getTime()) / 86400000), 1);
     const sidebarW = wbsW + labelW;
     const wrapW = Math.max(vpWidth - sidebarW, 60);
-    // contentW: exact pixels based on pxPerDay — xScale ALWAYS uses this, never stretched
-    const contentW = Math.round(daySpan * this.pxPerDay);
+    // contentW: exact pixels based on pxPerDay
+    let contentW = Math.round(daySpan * this.pxPerDay);
+    // In Mês/Dia modes, if the data is narrower than the viewport,
+    // stretch to fill so month/day columns don't look absurdly wide with
+    // empty space on the right.
+    if (this.zoomIdx > 0 && contentW < wrapW) {
+      contentW = wrapW;
+    }
     // svgW: in fit mode (zoomIdx 0) use contentW to avoid horizontal scroll;
     // in other modes, at least wrapW so background fills the visible area
     const chartW = this.zoomIdx === 0 ? contentW : Math.max(contentW, wrapW);
@@ -731,11 +810,50 @@ export class Visual implements IVisual {
     tasks.forEach(task => {
       const row = document.createElement("div");
       row.className = "sidebar-row";
+      if (task.isGroupHeader) row.classList.add("is-group-header");
       if (task.isSummary) row.classList.add("is-summary");
       if (!task.isVisible) row.classList.add("is-hidden");
       row.style.height = `${rowH}px`;
       row.dataset.id = task.id;
 
+      // ── Group header row ────────────────────────────────────────────────
+      if (task.isGroupHeader) {
+        const groupCell = document.createElement("div");
+        groupCell.className = "col-group-header";
+        groupCell.style.height = `${rowH}px`;
+
+        const btn = document.createElement("div");
+        btn.className = "collapse-btn group-collapse" + (this.collapsedGroups.has(task.group) ? " collapsed" : "");
+        btn.innerHTML = "&#9660;";
+        btn.addEventListener("click", ev => {
+          ev.stopPropagation();
+          if (this.collapsedGroups.has(task.group)) this.collapsedGroups.delete(task.group);
+          else this.collapsedGroups.add(task.group);
+          this.computeVisibility();
+          this.render(vpWidth, vpHeight);
+        });
+        groupCell.appendChild(btn);
+
+        const ns = document.createElement("span");
+        ns.className = "group-header-text";
+        ns.textContent = task.name;
+        ns.title = task.name;
+        groupCell.appendChild(ns);
+
+        row.appendChild(groupCell);
+
+        row.addEventListener("click", ev => {
+          ev.stopPropagation();
+          if (this.collapsedGroups.has(task.group)) this.collapsedGroups.delete(task.group);
+          else this.collapsedGroups.add(task.group);
+          this.computeVisibility();
+          this.render(vpWidth, vpHeight);
+        });
+        this.sideBody.appendChild(row);
+        return;
+      }
+
+      // ── Normal task row ─────────────────────────────────────────────────
       if (wbsActive) {
         const wbsCell = document.createElement("div");
         wbsCell.className = "col-wbs";
@@ -907,10 +1025,12 @@ export class Visual implements IVisual {
         : Math.min(xScale(zl.bottomInterval.offset(d, 1)), chartW);
       const cellW = Math.max(x2 - x1, 0);
       const isWE = isDayView && (d.getDay() === 0 || d.getDay() === 6);
-      // Suppress label when today falls in this cell (arrow/pill already marks it)
+      // Suppress label when today falls in this cell — only in day view
+      // where the pill directly replaces the day number.  In month/semester
+      // views suppressing the whole label removes important context.
       const _t = new Date();
       const todayLocal = new Date(_t.getFullYear(), _t.getMonth(), _t.getDate());
-      const todayInCell = showToday
+      const todayInCell = isDayView && showToday
         && todayLocal >= minDate && todayLocal <= maxDate
         && todayLocal >= d
         && (i + 1 >= botTicks.length || todayLocal < botTicks[i + 1]);
@@ -958,25 +1078,42 @@ export class Visual implements IVisual {
 
     // Row backgrounds — interactive: click selects, dblclick scrolls to bar
     visibleTasks.forEach((task, i) => {
-      this.bodySvg.append("rect")
+      const fillColor = task.isGroupHeader
+        ? "rgba(14,147,142,0.10)"
+        : task.isSummary ? "#e6f7f6" : (i % 2 === 0 ? "#fafbfc" : "#fff");
+
+      const rowRect = this.bodySvg.append("rect")
         .classed("row-bg", true)
         .attr("data-id", task.id)
         .attr("x", 0).attr("y", i * rowH).attr("width", chartW).attr("height", rowH)
-        .attr("fill", task.isSummary ? "#e6f7f6" : (i % 2 === 0 ? "#fafbfc" : "#fff"))
-        .style("cursor", "pointer")
-        .on("click", (ev: MouseEvent) => {
+        .attr("fill", fillColor)
+        .style("cursor", "pointer");
+
+      if (task.isGroupHeader) {
+        // Group header: click toggles collapse
+        rowRect.on("click", (ev: MouseEvent) => {
           ev.stopPropagation();
-          this.selectionManager.select(task.selectionId, ev.ctrlKey || ev.metaKey)
-            .then(() => this.syncHighlight());
-        })
-        .on("dblclick", (ev: MouseEvent) => {
-          ev.stopPropagation();
-          this.scrollToTask(task);
-        })
-        .on("contextmenu", (ev: MouseEvent) => {
-          ev.preventDefault();
-          this.selectionManager.showContextMenu(task.selectionId, { x: ev.clientX, y: ev.clientY });
+          if (this.collapsedGroups.has(task.group)) this.collapsedGroups.delete(task.group);
+          else this.collapsedGroups.add(task.group);
+          this.computeVisibility();
+          this.render(this.vpWidth, this.vpHeight);
         });
+      } else {
+        rowRect
+          .on("click", (ev: MouseEvent) => {
+            ev.stopPropagation();
+            this.selectionManager.select(task.selectionId, ev.ctrlKey || ev.metaKey)
+              .then(() => this.syncHighlight());
+          })
+          .on("dblclick", (ev: MouseEvent) => {
+            ev.stopPropagation();
+            this.scrollToTask(task);
+          })
+          .on("contextmenu", (ev: MouseEvent) => {
+            ev.preventDefault();
+            this.selectionManager.showContextMenu(task.selectionId, { x: ev.clientX, y: ev.clientY });
+          });
+      }
     });
 
     // Vertical grid — top (stronger)
@@ -1071,9 +1208,37 @@ export class Visual implements IVisual {
     visibleTasks.forEach((task, i) => {
       const rowY = i * rowH;
       const barCY = rowY + rowH / 2;
-      const barH = task.isSummary ? Math.round(rowH * 0.30) : Math.round(rowH * 0.44);
+
+      // ── Group header: render a thin colored span line across its date range ──
+      if (task.isGroupHeader) {
+        const gx1 = xScale(task.plannedStart);
+        const gEndPlus1 = new Date(
+          task.plannedEnd.getFullYear(),
+          task.plannedEnd.getMonth(),
+          task.plannedEnd.getDate() + 1
+        );
+        const gx2 = xScale(gEndPlus1);
+        const gW = Math.max(gx2 - gx1, 4);
+        const lineH = 3;
+        barsG.append("rect")
+          .attr("x", gx1).attr("y", barCY - lineH / 2)
+          .attr("width", gW).attr("height", lineH)
+          .attr("rx", 1.5).attr("fill", "#0E938E").attr("opacity", 0.35);
+        return;
+      }
+
+      // When baseline is hidden, make bars taller to fill the row better.
+      // When baseline is shown, shift the bar up slightly so bar+baseline as a unit are centered.
+      const hasBaseline = showBaseline && task.baselineStart && task.baselineEnd;
+      const barH = task.isSummary
+        ? Math.round(rowH * 0.30)
+        : hasBaseline ? Math.round(rowH * 0.38) : Math.round(rowH * 0.62);
       const baseH = Math.max(Math.round(rowH * 0.14), 4);
-      const barY = barCY - barH / 2;
+      const baseGap = 3;
+      // When baseline is present, shift bar up so (bar + gap + baseH) is centered in rowH
+      const barY = hasBaseline
+        ? barCY - (barH + baseGap + baseH) / 2
+        : barCY - barH / 2;
       const x1 = xScale(task.plannedStart);
       // Always derive width from xScale so position + width use the same mapping.
       // Add 1 day to end → single-day tasks get exactly 1 cell width.
@@ -1165,6 +1330,7 @@ export class Visual implements IVisual {
           const pctText = `${Math.round(task.progress)}%`;
           const minInside = 42;  // px threshold to fit label inside
           const summaryColor = cSummary;
+          const barMidY = barY + barH / 2;  // true vertical center of the bar
 
           if (!task.isSummary && barW >= minInside) {
             // ── Inside bar ──
@@ -1172,7 +1338,7 @@ export class Visual implements IVisual {
               ? x1 + Math.min(barW * (task.progress / 100) / 2, barW / 2)
               : x1 + barW / 2;
             tg.append("text")
-              .attr("x", lx).attr("y", barCY)
+              .attr("x", lx).attr("y", barMidY)
               .attr("dy", "0.35em")
               .attr("text-anchor", "middle")
               .attr("pointer-events", "none")
@@ -1184,7 +1350,7 @@ export class Visual implements IVisual {
           } else {
             // ── Outside bar (right side) ──
             tg.append("text")
-              .attr("x", x1 + barW + 5).attr("y", barCY)
+              .attr("x", x1 + barW + 5).attr("y", barMidY)
               .attr("dy", "0.35em")
               .attr("text-anchor", "start")
               .attr("pointer-events", "none")
@@ -1204,7 +1370,7 @@ export class Visual implements IVisual {
             task.baselineEnd!.getDate() + 1
           );
           const bW = Math.max(xScale(bEndPlus1) - bx1, 4);
-          const bY = barY + barH + 3;
+          const bY = barY + barH + baseGap;
           tg.append("rect")
             .attr("x", bx1).attr("y", bY).attr("width", bW).attr("height", baseH)
             .attr("rx", 2).attr("fill", cBaseline).attr("opacity", 0.55);
@@ -1317,6 +1483,7 @@ export class Visual implements IVisual {
       const el = nodes[i] as SVGRectElement;
       const task = this.viewModel?.tasks.find(t => t.id === el.getAttribute("data-id"));
       if (!task) return;
+      if (task.isGroupHeader) return;  // group headers don't participate in selection highlight
       let fill: string;
       if (task.isHighlighted === true) {
         fill = "#b2e8e6";  // selected — teal tint

@@ -1,6 +1,6 @@
 import { formattingSettings } from "powerbi-visuals-utils-formattingmodel";
 
-import FormattingSettingsCard = formattingSettings.SimpleCard;
+import FormattingSettingsCard  = formattingSettings.SimpleCard;
 import FormattingSettingsSlice = formattingSettings.Slice;
 import FormattingSettingsModel = formattingSettings.Model;
 
@@ -107,5 +107,5 @@ class LayoutCard extends FormattingSettingsCard {
 export class GanttFormattingSettings extends FormattingSettingsModel {
   colors = new ColorsCard();
   layout = new LayoutCard();
-  cards = [this.colors, this.layout];
+  cards  = [this.colors, this.layout];
 }

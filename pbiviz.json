@@ -1,11 +1,11 @@
 {
     "visual": {
-        "name": "toolsCrono",
-        "displayName": "toolsCrono",
-        "guid": "toolsCrono8C8CD91C8CAB4EE5816691E06CDC8931",
+        "name": "Gantt Chart",
+        "displayName": "GanttChart",
+        "guid": "GanttChart8C8CD91C8CAB4EE5816691E06CDC8931",
         "visualClassName": "Visual",
         "version": "1.0.0.0",
-        "description": "lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+        "description": "Gráfico de Gantt para gerenciamento de projetos, com suporte a tarefas, dependências, marcos e linhas de base.",
         "supportUrl": "www.example.com/support",
         "gitHubUrl": ""
     },
